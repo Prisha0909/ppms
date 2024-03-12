@@ -1,0 +1,24 @@
+.container {
+  display: flex;
+  justify-content: space-between;
+}
+
+.upload-container {
+  width: 30%;
+}
+
+.extracted-text-container {
+  width: 30%;
+}
+
+.result-container {
+  width: 30%;
+}
+
+.card {
+  width: 400px;
+}
+
+.selected-file {
+  margin-top: 20px;
+}
