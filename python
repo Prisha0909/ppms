@@ -1,0 +1,66 @@
+import os
+import pandas as pd
+import pdfplumber
+import pytesseract
+from PIL import Image
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.model_selection import train_test_split
+from sklearn.svm import SVC
+from sklearn.pipeline import Pipeline
+import joblib
+
+# Function to extract text from PDF using pdfplumber
+def extract_text_from_pdf(pdf_path):
+    text = ''
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text += page.extract_text()
+    return text
+
+# Function to extract text from images using pytesseract OCR
+def extract_text_from_images(images):
+    text = ''
+    for image in images:
+        img_text = pytesseract.image_to_string(image)
+        text += img_text
+    return text
+
+# Load dataset
+data_dir = 'dataset'
+file_paths = []
+document_types = []
+
+for document_type in os.listdir(data_dir):
+    document_type_dir = os.path.join(data_dir, document_type)
+    for file_name in os.listdir(document_type_dir):
+        file_paths.append(os.path.join(document_type_dir, file_name))
+        document_types.append(document_type)
+
+df = pd.DataFrame({'file_path': file_paths, 'document_type': document_types})
+
+# Extract text from PDFs and OCR from images
+df['text'] = df['file_path'].apply(lambda x: extract_text_from_pdf(x))
+df['images'] = df['file_path'].apply(lambda x: [Image.open(page) for page in pdfplumber.open(x).pages if page.images])
+df['images_text'] = df['images'].apply(lambda x: extract_text_from_images(x))
+
+# Combine extracted text from PDFs and OCR text from images
+df['final_text'] = df['text'] + df['images_text']
+
+# Split data into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(df['final_text'], df['document_type'], test_size=0.2, random_state=42)
+
+# Define the pipeline
+pipeline = Pipeline([
+    ('tfidf', TfidfVectorizer()),
+    ('clf', SVC(kernel='linear'))
+])
+
+# Train the model
+pipeline.fit(X_train, y_train)
+
+# Evaluate the model
+accuracy = pipeline.score(X_test, y_test)
+print(f'Model Accuracy: {accuracy}')
+
+# Save the model
+joblib.dump(pipeline, 'document_classifier_model.pkl')
