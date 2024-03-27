@@ -1,66 +1,119 @@
-import os
+# streamlit_app.py
+import streamlit as st
 import pandas as pd
-import pdfplumber
-import pytesseract
-from PIL import Image
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import train_test_split
 from sklearn.svm import SVC
-from sklearn.pipeline import Pipeline
-import joblib
+import textract
+import pytesseract
+from pdf2image import convert_from_path
+from io import BytesIO  # Import BytesIO to handle file bytes
+import os
 
-# Function to extract text from PDF using pdfplumber
-def extract_text_from_pdf(pdf_path):
-    text = ''
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            text += page.extract_text()
+# Function to extract text from PDF files
+def extract_text_from_pdf(pdf_bytes):
+    text = ""
+    try:
+        text = textract.process(BytesIO(pdf_bytes)).decode('utf-8')  # Process PDF bytes using textract
+    except Exception as e:
+        st.error("Error extracting text from PDF:", e)
     return text
 
-# Function to extract text from images using pytesseract OCR
-def extract_text_from_images(images):
-    text = ''
-    for image in images:
-        img_text = pytesseract.image_to_string(image)
-        text += img_text
+# Function to extract text from images in PDF files
+def extract_text_from_images(pdf_bytes):
+    text = ""
+    try:
+        pages = convert_from_path(BytesIO(pdf_bytes), 300)  # Convert PDF bytes to images
+        for page in pages:
+            text += pytesseract.image_to_string(page)  # Extract text from each page image
+    except Exception as e:
+        st.error("Error extracting text from images in PDF:", e)
     return text
 
-# Load dataset
-data_dir = 'dataset'
-file_paths = []
-document_types = []
+# Load dataset from folders - Modify this part according to your dataset
+def load_dataset(dataset_path):
+    data = []
+    for folder in os.listdir(dataset_path):
+        folder_path = os.path.join(dataset_path, folder)
+        if os.path.isdir(folder_path):
+            for file in os.listdir(folder_path):
+                file_path = os.path.join(folder_path, file)
+                if file.endswith('.pdf'):
+                    with open(file_path, "rb") as f:
+                        pdf_bytes = f.read()  # Read PDF file as bytes
+                        text = extract_text_from_pdf(pdf_bytes)
+                        if not text:
+                            text = extract_text_from_images(pdf_bytes)
+                        if text:
+                            data.append({'text': text, 'label': folder})
+    return data
 
-for document_type in os.listdir(data_dir):
-    document_type_dir = os.path.join(data_dir, document_type)
-    for file_name in os.listdir(document_type_dir):
-        file_paths.append(os.path.join(document_type_dir, file_name))
-        document_types.append(document_type)
+# Load your dataset - Modify this part according to your dataset
+dataset_path = 'path/to/your/dataset'  # Replace with the path to your dataset folder
+dataset = load_dataset(dataset_path)
+dataset_df = pd.DataFrame(dataset)
 
-df = pd.DataFrame({'file_path': file_paths, 'document_type': document_types})
+# Assuming your dataset has two columns: 'text' and 'label' for document text and labels respectively
 
-# Extract text from PDFs and OCR from images
-df['text'] = df['file_path'].apply(lambda x: extract_text_from_pdf(x))
-df['images'] = df['file_path'].apply(lambda x: [Image.open(page) for page in pdfplumber.open(x).pages if page.images])
-df['images_text'] = df['images'].apply(lambda x: extract_text_from_images(x))
+# Preprocess the text data (if needed)
+# ...
 
-# Combine extracted text from PDFs and OCR text from images
-df['final_text'] = df['text'] + df['images_text']
+# Vectorize the text using TF-IDF
+tfidf_vectorizer = TfidfVectorizer(max_features=10000)
+X = tfidf_vectorizer.fit_transform(dataset_df['text'])
+y = dataset_df['label']
 
-# Split data into train and test sets
-X_train, X_test, y_train, y_test = train_test_split(df['final_text'], df['document_type'], test_size=0.2, random_state=42)
+# Train the classification model (SVM classifier)
+model = SVC(kernel='linear')
+model.fit(X, y)
 
-# Define the pipeline
-pipeline = Pipeline([
-    ('tfidf', TfidfVectorizer()),
-    ('clf', SVC(kernel='linear'))
-])
+# Streamlit UI
+st.title("Document Classifier")
 
-# Train the model
-pipeline.fit(X_train, y_train)
+@st.experimental_singleton
+def get_prediction_model():
+    return model
 
-# Evaluate the model
-accuracy = pipeline.score(X_test, y_test)
-print(f'Model Accuracy: {accuracy}')
+@st.cache(suppress_st_warning=True)
+def predict(document_bytes):
+    model = get_prediction_model()
+    text = extract_text_from_pdf(document_bytes)
+    if not text:
+        text = extract_text_from_images(document_bytes)
+    if text:
+        # Vectorize the uploaded text
+        text_vectorized = tfidf_vectorizer.transform([text])
 
-# Save the model
-joblib.dump(pipeline, 'document_classifier_model.pkl')
+        # Make predictions
+        prediction = model.predict(text_vectorized)
+        return {"document_type": prediction[0], "extracted_text": text}
+    else:
+        st.error("No text extracted from the PDF.")
+        return {}
+
+# Endpoint to receive HTTP POST requests - No modification needed
+@st.cache(allow_output_mutation=True)
+def empty_state():
+    return []
+
+states = empty_state()
+@st.cache(hash_funcs={BytesIO: id})
+def predict_single(file):
+    prediction = predict(file.getvalue())
+    states.append(prediction)
+    return prediction
+
+# Endpoint to receive HTTP POST requests from Angular frontend - No modification needed
+@st.experimental_memo
+def predict_from_frontend(file):
+    return predict_single(file)
+
+# Process file upload from Angular frontend - No modification needed
+def process_upload(file):
+    prediction = predict_from_frontend(file)
+    st.write("Document Type:", prediction.get("document_type"))
+    st.write("Extracted Text:", prediction.get("extracted_text"))
+
+uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
+
+if uploaded_file:
+    process_upload(uploaded_file)
