@@ -1,119 +1,19 @@
-# streamlit_app.py
-import streamlit as st
-import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.svm import SVC
-import textract
-import pytesseract
-from pdf2image import convert_from_path
-from io import BytesIO  # Import BytesIO to handle file bytes
-import os
+import tempfile
 
 # Function to extract text from PDF files
 def extract_text_from_pdf(pdf_bytes):
     text = ""
     try:
-        text = textract.process(BytesIO(pdf_bytes)).decode('utf-8')  # Process PDF bytes using textract
+        # Save the PDF file to a temporary location
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+            temp_pdf.write(pdf_bytes)
+            temp_pdf_path = temp_pdf.name
+        
+        # Process the PDF file using textract
+        text = textract.process(temp_pdf_path, encoding='utf-8')
     except Exception as e:
-        st.error("Error extracting text from PDF:", e)
+        st.error("Error extracting text from PDF: {}".format(e))
+    finally:
+        # Delete the temporary PDF file
+        os.unlink(temp_pdf_path)
     return text
-
-# Function to extract text from images in PDF files
-def extract_text_from_images(pdf_bytes):
-    text = ""
-    try:
-        pages = convert_from_path(BytesIO(pdf_bytes), 300)  # Convert PDF bytes to images
-        for page in pages:
-            text += pytesseract.image_to_string(page)  # Extract text from each page image
-    except Exception as e:
-        st.error("Error extracting text from images in PDF:", e)
-    return text
-
-# Load dataset from folders - Modify this part according to your dataset
-def load_dataset(dataset_path):
-    data = []
-    for folder in os.listdir(dataset_path):
-        folder_path = os.path.join(dataset_path, folder)
-        if os.path.isdir(folder_path):
-            for file in os.listdir(folder_path):
-                file_path = os.path.join(folder_path, file)
-                if file.endswith('.pdf'):
-                    with open(file_path, "rb") as f:
-                        pdf_bytes = f.read()  # Read PDF file as bytes
-                        text = extract_text_from_pdf(pdf_bytes)
-                        if not text:
-                            text = extract_text_from_images(pdf_bytes)
-                        if text:
-                            data.append({'text': text, 'label': folder})
-    return data
-
-# Load your dataset - Modify this part according to your dataset
-dataset_path = 'path/to/your/dataset'  # Replace with the path to your dataset folder
-dataset = load_dataset(dataset_path)
-dataset_df = pd.DataFrame(dataset)
-
-# Assuming your dataset has two columns: 'text' and 'label' for document text and labels respectively
-
-# Preprocess the text data (if needed)
-# ...
-
-# Vectorize the text using TF-IDF
-tfidf_vectorizer = TfidfVectorizer(max_features=10000)
-X = tfidf_vectorizer.fit_transform(dataset_df['text'])
-y = dataset_df['label']
-
-# Train the classification model (SVM classifier)
-model = SVC(kernel='linear')
-model.fit(X, y)
-
-# Streamlit UI
-st.title("Document Classifier")
-
-@st.experimental_singleton
-def get_prediction_model():
-    return model
-
-@st.cache(suppress_st_warning=True)
-def predict(document_bytes):
-    model = get_prediction_model()
-    text = extract_text_from_pdf(document_bytes)
-    if not text:
-        text = extract_text_from_images(document_bytes)
-    if text:
-        # Vectorize the uploaded text
-        text_vectorized = tfidf_vectorizer.transform([text])
-
-        # Make predictions
-        prediction = model.predict(text_vectorized)
-        return {"document_type": prediction[0], "extracted_text": text}
-    else:
-        st.error("No text extracted from the PDF.")
-        return {}
-
-# Endpoint to receive HTTP POST requests - No modification needed
-@st.cache(allow_output_mutation=True)
-def empty_state():
-    return []
-
-states = empty_state()
-@st.cache(hash_funcs={BytesIO: id})
-def predict_single(file):
-    prediction = predict(file.getvalue())
-    states.append(prediction)
-    return prediction
-
-# Endpoint to receive HTTP POST requests from Angular frontend - No modification needed
-@st.experimental_memo
-def predict_from_frontend(file):
-    return predict_single(file)
-
-# Process file upload from Angular frontend - No modification needed
-def process_upload(file):
-    prediction = predict_from_frontend(file)
-    st.write("Document Type:", prediction.get("document_type"))
-    st.write("Extracted Text:", prediction.get("extracted_text"))
-
-uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
-
-if uploaded_file:
-    process_upload(uploaded_file)
