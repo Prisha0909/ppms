@@ -1,62 +1,24 @@
-import { Component } from '@angular/core';
-import { HttpClient, HttpHeaders, HttpErrorResponse } from '@angular/common/http';
-import { catchError } from 'rxjs/operators';
-import { throwError } from 'rxjs';
+import streamlit as st
 
-@Component({
-  selector: 'app-root',
-  templateUrl: './app.component.html',
-  styleUrls: ['./app.component.css']
-})
-export class AppComponent {
-  constructor(private http: HttpClient) {}
+@st.experimental_memo
+def process_pdf(file_content):
+    st.markdown(file_content, unsafe_allow_html=True)  # Display PDF content
 
-  // Function to send data to Streamlit backend
-  sendDataToStreamlit(data: any): void {
-    const apiUrl = 'http://localhost:8501/process_data'; // URL of the Streamlit endpoint
+def main():
+    st.title("PDF Viewer")
 
-    // Set the headers for the HTTP request
-    const headers = new HttpHeaders({
-      'Content-Type': 'application/json'
-    });
+    # Create an endpoint to receive PDF content via GET request
+    url = "/process_pdf"
+    if st._is_running_with_streamlit:
+        from streamlit.report_thread import get_report_ctx
+        ctx = get_report_ctx()
+        session_id = ctx.session_id
+        url = st.server.get_url() + "/_api/session/" + session_id + "/process_pdf"
 
-    // Send the HTTP POST request
-    this.http.post(apiUrl, data, { headers })
-      .pipe(
-        catchError(this.handleError)
-      )
-      .subscribe(
-        response => {
-          console.log('Response from Streamlit:', response);
-        },
-        error => {
-          console.error('Error sending data to Streamlit:', error);
-        }
-      );
-  }
+    file_content = st.text_area("Paste PDF content here")
 
-  // Function to handle file upload and send data to Streamlit
-  onFileSelected(event: any): void {
-    const file = event.target.files[0];
-    const reader = new FileReader();
-    reader.onload = () => {
-      const fileContent = reader.result as string;
-      this.sendDataToStreamlit({ fileContent });
-    };
-    reader.readAsText(file);
-  }
+    if file_content:
+        process_pdf(file_content)
 
-  // Error handling function
-  private handleError(error: HttpErrorResponse) {
-    let errorMessage = 'Unknown error occurred';
-    if (error.error instanceof ErrorEvent) {
-      // Client-side error
-      errorMessage = `Error: ${error.error.message}`;
-    } else {
-      // Server-side error
-      errorMessage = `Error Code: ${error.status}\nMessage: ${error.message}`;
-    }
-    console.error(errorMessage);
-    return throwError(errorMessage);
-  }
-}
+if __name__ == "__main__":
+    main()
