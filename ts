@@ -1,69 +1,19 @@
-import { Component } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+def process_data(data):
+    # Process the received data here
+    st.write("Data received from Angular:", data)
 
-@Component({
-  selector: 'app-upload',
-  templateUrl: './upload.component.html',
-  styleUrls: ['./upload.component.css']
-})
-export class UploadComponent {
-  selectedFile: File;
-  extractedText: string;
-  documentType: string;
+# Define the main Streamlit app
+def main():
+    # Title for the Streamlit app
+    st.title("Streamlit App")
 
-  constructor(private http: HttpClient) { }
+    # Check if a POST request has been made
+    if st.request_method() == 'POST':
+        # Retrieve the data sent from Angular
+        data = st.request_body()
+        # Process the received data
+        process_data(data)
 
-  onFileSelected(event: any): void {
-    this.selectedFile = event.target.files[0];
-  }
-
-  uploadFile(): void {
-    if (!this.selectedFile) {
-      console.error('No file selected');
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', this.selectedFile);
-
-    this.http.post<any>('http://localhost:3000/upload', formData).subscribe(
-      (res) => {
-        console.log('File uploaded successfully:', res);
-        // Fetch extracted text
-        this.fetchExtractedText();
-        // Fetch document type
-        this.fetchDocumentType();
-      },
-      (err) => {
-        console.error('Error uploading file:', err);
-        // Handle errors
-      }
-    );
-  }
-
-  fetchExtractedText(): void {
-    this.http.get<any>('http://localhost:3000/extracted-text').subscribe(
-      (res) => {
-        console.log('Extracted text:', res);
-        this.extractedText = res.extractedText;
-      },
-      (err) => {
-        console.error('Error fetching extracted text:', err);
-        // Handle errors
-      }
-    );
-  }
-
-  fetchDocumentType(): void {
-    this.http.get<any>('http://localhost:3000/document-type').subscribe(
-      (res) => {
-        console.log('Document type:', res);
-        this.documentType = res.documentType;
-      },
-      (err) => {
-        console.error('Error fetching document type:', err);
-        // Handle errors
-      }
-    );
-  }
-}
+# Run the Streamlit app
+if __name__ == "__main__":
+    main()
