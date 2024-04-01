@@ -1,79 +1,69 @@
-import os
+# streamlit_app.py
+
 import streamlit as st
-import base64
-import tempfile
 import PyPDF2
-from sklearn import svm
+from sklearn.svm import SVC
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.pipeline import make_pipeline
-
-# Function to extract text from PDF file using PyPDF2
-def extract_text_from_pdf(file_content):
-    try:
-        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-            tmp_file.write(file_content)
-            tmp_file.close()
-            pdf_file = open(tmp_file.name, 'rb')
-            pdf_reader = PyPDF2.PdfFileReader(pdf_file)
-            text = ''
-            for page_number in range(pdf_reader.numPages):
-                page = pdf_reader.getPage(page_number)
-                text += page.extractText()
-            return text
-    except Exception as e:
-        st.error("Error extracting text from PDF:", e)
-        return None
-
-# Function to load and preprocess the dataset
-def load_dataset(folder_path):
-    texts = []
-    labels = []
-    for root, dirs, files in os.walk(folder_path):
-        for file in files:
-            file_path = os.path.join(root, file)
-            try:
-                with open(file_path, 'rb') as f:
-                    text = extract_text_from_pdf(f.read())
-                    texts.append(text)
-                    labels.append(os.path.basename(root))
-            except Exception as e:
-                st.warning(f"Skipping file {file_path}: {e}")
-    return texts, labels
-
-# Load and preprocess the dataset
-dataset_folder_path = "path/to/your/dataset/folder"
-texts, labels = load_dataset(dataset_folder_path)
-
-# Train SVM classifier
-classifier = make_pipeline(TfidfVectorizer(), svm.SVC(kernel='linear'))
-classifier.fit(texts, labels)
 
 # Function to classify document type
-def classify_document_type(text):
-    document_type = classifier.predict([text])[0]
+def classify_document(text):
+    # Load trained SVM model
+    model = load_model()
+
+    # Preprocess text (you may need to customize this based on your preprocessing steps)
+    processed_text = preprocess_text(text)
+
+    # Classify document type
+    document_type = model.predict([processed_text])[0]
     return document_type
 
-# Streamlit app
-st.title("Document Classifier")
+# Function to load ML model
+def load_model():
+    # Load your trained ML model here (e.g., SVM classifier)
+    model = SVC(kernel='linear')
+    # Load saved model weights or load model from saved file
+    # model.load_weights("path/to/your/model/weights.h5")
+    return model
 
-# Receive PDF file data from Angular frontend through a POST request
-pdf_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+# Function to preprocess text
+def preprocess_text(text):
+    # Implement your preprocessing steps here (e.g., tokenization, removing stop words, etc.)
+    return text
 
-if pdf_file is not None:
-    file_content = pdf_file.read()
-    st.write("File uploaded successfully.")
-    st.write("Extracting text from PDF...")
-    text = extract_text_from_pdf(file_content)
-    if text:
-        st.write("Text extracted successfully.")
-        st.write("Classifying document type...")
-        document_type = classify_document_type(text)
-        st.write("Document type:", document_type)
-        st.write("Extracted text:")
-        st.write(text)
-        
-        # Send extracted text and document type to the frontend
-        response = {'document_type': document_type, 'extracted_text': text}
-        st.json(response)
-    else:
-        st.error("Failed to extract text from the PDF.")
+def main():
+    st.title("Document Analyzer")
+
+    # PDF Upload section
+    st.header("Upload PDF")
+    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+
+    if uploaded_file is not None:
+        # Display uploaded PDF
+        st.write("Uploaded PDF:")
+        st.write(uploaded_file)
+
+        # Extract text from PDF
+        extracted_text = extract_text(uploaded_file)
+
+        # Display extracted text
+        st.header("Extracted Text")
+        st.write(extracted_text)
+
+        # Classify document type
+        document_type = classify_document(extracted_text)
+
+        # Display document type
+        st.header("Document Type")
+        st.write(document_type)
+
+def extract_text(uploaded_file):
+    # Read PDF and extract text
+    pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
+    extracted_text = ""
+    for page_num in range(pdf_reader.numPages):
+        page = pdf_reader.getPage(page_num)
+        extracted_text += page.extractText()
+    return extracted_text
+
+if __name__ == "__main__":
+    main()
