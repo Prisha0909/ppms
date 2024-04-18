@@ -1,53 +1,48 @@
-from pdfbox import PDFBox
-import re
+import PyPDF2
 
 def extract_text_from_pdf(pdf_path):
-    pdfbox = PDFBox()
-    return pdfbox.extract_text(pdf_path)
+    text = ""
+    with open(pdf_path, "rb") as file:
+        reader = PyPDF2.PdfReader(file)
+        for page_num in range(len(reader.pages)):
+            page = reader.pages[page_num]
+            text += page.extract_text()
+    return text
 
-def extract_headings_and_clauses(text):
-    headings = []
+
+def identify_headings_and_clauses(text):
+    # Implement logic to identify headings and associated clauses
+    # For example, you can use regular expressions to find patterns indicating headings
+    headings = [line.strip() for line in text.split("\n") if line.strip().isupper()]
     clauses = []
-
-    # Split the text into lines
-    lines = text.split("\n")
-
-    # Extract headings (assuming headings are lines in all caps)
-    for line_num, line in enumerate(lines, 1):
-        if line.strip().isupper():
-            headings.append((line, line_num))  # Add heading and line number
-
-    # Extract clauses associated with each heading
-    for i, (heading, line_num) in enumerate(headings):
-        if i < len(headings) - 1:
-            next_heading_line = headings[i + 1][1]
+    for heading in headings:
+        start_index = text.find(heading)
+        next_heading_index = text.find("\n", start_index + 1)
+        if next_heading_index == -1:
+            clause = text[start_index:]
         else:
-            next_heading_line = len(lines) + 1  # Assume end of text if no more headings
-
-        # Extract clauses between current heading and next heading
-        clause_lines = lines[line_num:next_heading_line - 1]
-        clause = "\n".join(clause_lines).strip()
+            clause = text[start_index:next_heading_index]
         clauses.append(clause)
-
     return headings, clauses
 
 def main():
-    pdf_path = "example.pdf"
-    text = extract_text_from_pdf(pdf_path)
-    headings, _ = extract_headings_and_clauses(text)
-
+    pdf_path = "Shareholders-Agreement-Template.pdf"
+    extracted_text = extract_text_from_pdf(pdf_path)
+    headings, clauses = identify_headings_and_clauses(extracted_text)
+    
     print("Extracted Headings:")
-    for idx, (heading, line_num) in enumerate(headings, 1):
-        print(f"{idx}. {heading} (Line {line_num})")
+    for idx, heading in enumerate(headings):
+        print(f"{idx + 1}. {heading}")
 
     selected_heading_index = int(input("Enter the index of the heading you want to explore: ")) - 1
+    selected_heading = headings[selected_heading_index]
 
-    if 0 <= selected_heading_index < len(headings):
-        _, clauses = extract_headings_and_clauses(text)
-        print("Selected Heading Clause:")
-        print(clauses[selected_heading_index])
-    else:
-        print("Invalid heading index. Please enter a valid index.")
+    highlighted_clause = clauses[selected_heading_index]
+    # Implement logic to highlight or underline the clause
+    # For example, you can add HTML tags to highlight or underline the text
+
+    print("Highlighted Clause:")
+    print(highlighted_clause)
 
 if __name__ == "__main__":
     main()
