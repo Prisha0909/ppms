@@ -93,3 +93,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+title_match = re.match(r'^([A-Z][a-zA-Z\s]+|[A-Z\s]+):$', line.strip())
+if title_match:
+    title = title_match.group(1)
