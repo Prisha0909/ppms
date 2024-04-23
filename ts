@@ -46,4 +46,18 @@ def extract_headings_and_sections(pdf_path):
     
     return headings_and_sections
 
-# Rest of the code for clause extraction remains the same
+def print_headings_and_sections(headings_and_sections):
+    for section in headings_and_sections:
+        print(f"Section Title: {section['section_title']}")
+        print("Headings:")
+        for heading in section['headings']:
+            print(f"- {heading}")
+        print()
+
+def main():
+    pdf_file_path = "your_pdf_file.pdf"  # Replace with the path to your PDF file
+    headings_and_sections = extract_headings_and_sections(pdf_file_path)
+    print_headings_and_sections(headings_and_sections)
+
+if __name__ == "__main__":
+    main()
