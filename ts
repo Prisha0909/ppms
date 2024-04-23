@@ -1,50 +1,46 @@
 import pdfplumber
 
-def extract_headings(pdf_path):
-    headings = []
+def is_heading(element):
+    # Check if the element starts with a number and is in bold font
+    return element['text'].strip().startswith(('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')) and element['fontname'] == 'Arial-BoldMT'
+
+def extract_headings_and_sections(pdf_path):
+    headings_and_sections = []
+    
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
-            text = page.extract_text()
-            lines = text.split("\n")
-            for line in lines:
-                if line.strip() and line.strip()[0].isdigit() and line.strip().endswith("."):
-                    headings.append(line.strip())
-    return headings
+            # Extract all elements (text and their styling) from the page
+            elements = page.extract_words()
+            
+            # Initialize variables to store section title and associated headings
+            section_title = None
+            section_headings = []
+            
+            # Iterate through each element on the page
+            for element in elements:
+                # Check if the element is a heading
+                if is_heading(element):
+                    # If section title is found, add previous section's title and headings to the list
+                    if section_title and section_headings:
+                        headings_and_sections.append({
+                            'section_title': section_title,
+                            'headings': section_headings
+                        })
+                    
+                    # Set the new section title and clear the list of headings
+                    section_title = element['text']
+                    section_headings = []
+                elif section_title:
+                    # If section title is found, consider subsequent elements as headings
+                    section_headings.append(element['text'])
+            
+            # Add the last section's title and headings to the list
+            if section_title and section_headings:
+                headings_and_sections.append({
+                    'section_title': section_title,
+                    'headings': section_headings
+                })
+    
+    return headings_and_sections
 
-def extract_clause(pdf_path, selected_heading):
-    clause = ""
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text()
-            lines = text.split("\n")
-            found_heading = False
-            for line in lines:
-                if line.strip() == selected_heading:
-                    found_heading = True
-                    continue  # Skip the heading line itself
-                if found_heading:
-                    if line.strip():  # Skip empty lines
-                        clause += line.strip() + "\n"  # Add the line to the clause
-                if found_heading and line.strip() and line.strip()[0].isdigit() and line.strip().endswith("."):
-                    break  # Stop extracting text if a new heading is found
-    return clause.strip()
-
-def main():
-    pdf_path = "path/to/your/pdf_file.pdf"
-    headings = extract_headings(pdf_path)
-
-    print("Available Headings:")
-    for idx, heading in enumerate(headings, 1):
-        print(f"{idx}. {heading}")
-
-    choice = int(input("Enter the index of the heading you want to explore: "))
-    if 1 <= choice <= len(headings):
-        selected_heading = headings[choice - 1]
-        clause = extract_clause(pdf_path, selected_heading)
-        print("\nClause under selected heading:")
-        print(clause)
-    else:
-        print("Invalid choice. Please enter a valid index.")
-
-if __name__ == "__main__":
-    main()
+# Rest of the code for clause extraction remains the same
