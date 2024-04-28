@@ -1,108 +1,92 @@
 import os
-import numpy as np
-import torch
-from torch.utils.data import DataLoader, TensorDataset
-from transformers import BertTokenizer, BertForSequenceClassification, AdamW
-from sklearn.model_selection import train_test_split
+import re
+import spacy
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score
-import pdfplumber
+from sklearn.model_selection import train_test_split
+import numpy as np
+import matplotlib.pyplot as plt
 
-# Function to extract text from a PDF file
+# Load dataset using PDF to text extraction function
 def extract_text_from_pdf(pdf_path):
-    with open(pdf_path, "rb") as f:
-        pdf = pdfplumber.open(f)
-        text = ""
-        for page in pdf.pages:
-            text += page.extract_text()
-    return text
-
-# Load and preprocess the dataset
-def load_dataset(data_path):
-    docs = []
-    labels = []
-    categories = os.listdir(data_path)
-    for category in categories:
-        category_path = os.path.join(data_path, category)
-        files = os.listdir(category_path)
-        for file in files:
-            text = extract_text_from_pdf(os.path.join(category_path, file))
-            docs.append(text)
-            labels.append(category)
-    return docs, labels
+    # Your PDF to text extraction function using pdfplumber
+    pass
 
 data_path = "path/to/dataset"
-X_text, y = load_dataset(data_path)
+categories = os.listdir(data_path)
+docs = []
+labels = []
+for category in categories:
+    category_path = os.path.join(data_path, category)
+    files = os.listdir(category_path)
+    for file in files:
+        text = extract_text_from_pdf(os.path.join(category_path, file))
+        docs.append(text)
+        labels.append(category)
 
-# Split the dataset into training and testing sets
-X_train_text, X_test_text, y_train, y_test = train_test_split(X_text, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(docs, labels, test_size=0.3, random_state=42, shuffle=True)
 
-# Load BERT tokenizer and model
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=len(set(y)))
+# Load spaCy English model
+nlp = spacy.load("en_core_web_sm")
 
-# Tokenize and encode the text data
-X_train_encoded = tokenizer(X_train_text, padding=True, truncation=True, max_length=512, return_tensors='pt')
-X_test_encoded = tokenizer(X_test_text, padding=True, truncation=True, max_length=512, return_tensors='pt')
+# Define preprocessing steps using spaCy
+def preprocess_text(text):
+    # Convert to lowercase
+    text = text.lower()
+    # Remove non-alphanumeric characters
+    text = re.sub(r'[^a-zA-Z0-9\s]', '', text, re.I | re.A)
+    # Tokenize text using spaCy
+    tokens = nlp(text)
+    # Lemmatize tokens
+    tokens = [token.lemma_ for token in tokens if not token.is_stop]
+    # Rejoin tokens into a string
+    text = ' '.join(tokens)
+    return text
 
-# Convert labels to numerical indices
-label_map = {label: i for i, label in enumerate(set(y))}
-y_train_encoded = [label_map[label] for label in y_train]
-y_test_encoded = [label_map[label] for label in y_test]
+# list of alpha values
+alpha_values = np.linspace(0, 2, num=11)
 
-# Convert data to PyTorch tensors
-X_train_tensors = TensorDataset(X_train_encoded['input_ids'], X_train_encoded['attention_mask'], torch.tensor(y_train_encoded))
-X_test_tensors = TensorDataset(X_test_encoded['input_ids'], X_test_encoded['attention_mask'], torch.tensor(y_test_encoded))
+# Initialize lists to store the accuracy values
+train_acc = []
+test_acc = []
 
-# Create DataLoader for training and testing sets
-train_loader = DataLoader(X_train_tensors, batch_size=4, shuffle=True)
-test_loader = DataLoader(X_test_tensors, batch_size=4, shuffle=False)
+# Define the pipeline
+for alpha in alpha_values:
+    nb_pipeline = Pipeline([
+        ('preprocess', CountVectorizer(preprocessor=preprocess_text,
+                                       ngram_range=(1, 1), max_df=0.8, min_df=2)),
+        ('tfidf', TfidfTransformer()),
+        ('nb', MultinomialNB(alpha=alpha)),
+    ])
 
-# Training settings
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
-optimizer = AdamW(model.parameters(), lr=1e-5)
+    # Fit the model
+    print("Fitting")
+    nb_pipeline.fit(X_train, y_train)
+    print("done")
 
-# Training loop
-model.train()
-for epoch in range(3):  # Adjust number of epochs as needed
-    for batch in train_loader:
-        input_ids, attention_mask, labels = batch
-        input_ids, attention_mask, labels = input_ids.to(device), attention_mask.to(device), labels.to(device)
-        optimizer.zero_grad()
-        outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
-        loss = outputs.loss
-        loss.backward()
-        optimizer.step()
+    # calculate accuracy on training set
+    train_predicted = nb_pipeline.predict(X_train)
+    train_accuracy = accuracy_score(y_train, train_predicted)
+    train_acc.append(train_accuracy)
 
-# Evaluation
-model.eval()
-predictions = []
-true_labels = []
-with torch.no_grad():
-    for batch in test_loader:
-        input_ids, attention_mask, labels = batch
-        input_ids, attention_mask, labels = input_ids.to(device), attention_mask.to(device), labels.to(device)
-        outputs = model(input_ids, attention_mask=attention_mask)
-        logits = outputs.logits
-        preds = torch.argmax(logits, dim=1)
-        predictions.extend(preds.cpu().numpy())
-        true_labels.extend(labels.cpu().numpy())
+    # calculate on test set
+    test_predict = nb_pipeline.predict(X_test)
+    test_accuracy = accuracy_score(y_test, test_predict)
+    test_acc.append(test_accuracy)
 
-# Calculate accuracy
-accuracy = accuracy_score(true_labels, predictions)
-print("Accuracy:", accuracy)
+# Plot the accuracy values
+plt.plot(alpha_values, train_acc, '-o', label='Training Set')
+plt.plot(alpha_values, test_acc, '-o', label='Test Set')
+plt.xlabel('Alpha Values')
+plt.ylabel('Accuracy')
+plt.title('Accuracy vs Alpha Values for Multinomial Naive Bayes Model')
+plt.legend()
+plt.show()
 
-# Function to predict document type from a given PDF
-def predict_document_type(pdf_path):
-    text = extract_text_from_pdf(pdf_path)
-    encoded_text = tokenizer(text, padding=True, truncation=True, max_length=512, return_tensors='pt')
-    input_ids, attention_mask = encoded_text['input_ids'].to(device), encoded_text['attention_mask'].to(device)
-    output = model(input_ids, attention_mask=attention_mask)
-    predicted_label_idx = torch.argmax(output.logits, dim=1).item()
-    predicted_label = [label for label, idx in label_map.items() if idx == predicted_label_idx][0]
-    return predicted_label
-
-# Example usage
-pdf_path = "path/to/your/pdf/file.pdf"
-predicted_type = predict_document_type(pdf_path)
-print("Predicted document type:", predicted_type)
+# Predicting Document Types for New Document
+new_document_text = "This is a new document text to predict its category."
+preprocessed_new_document = preprocess_text(new_document_text)
+predicted_category = nb_pipeline.predict([preprocessed_new_document])
+print("Predicted category for new document:", predicted_category)
