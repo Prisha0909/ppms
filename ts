@@ -82,3 +82,32 @@ print("Accuracy:", accuracy)
 print("Classification Report:")
 print(classification_report(y_test, y_pred))
 
+# Function to preprocess and extract features from a new document
+def preprocess_new_document(pdf_path):
+    text = extract_text_from_pdf(pdf_path)
+    if text:
+        text_tokens = gensim.utils.simple_preprocess(text)
+        structural_features = extract_structural_features(text)
+        return text_tokens, structural_features
+    else:
+        return None, None
+
+# Function to predict the type of a new document
+def predict_document_type(pdf_path):
+    text_tokens, structural_features = preprocess_new_document(pdf_path)
+    if text_tokens and structural_features:
+        doc_vector = doc2vec_model.infer_vector(text_tokens)
+        combined_features = doc_vector + structural_features
+        scaled_features = scaler.transform([combined_features])
+        predicted_type = clf.predict(scaled_features)[0]
+        return predicted_type
+    else:
+        return None
+
+# Example usage:
+new_document_path = "path/to/new/document.pdf"
+predicted_type = predict_document_type(new_document_path)
+if predicted_type:
+    print("Predicted document type:", predicted_type)
+else:
+    print("Error: Unable to predict document type.")
