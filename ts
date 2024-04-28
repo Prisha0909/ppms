@@ -57,12 +57,25 @@ documents = [gensim.models.doc2vec.TaggedDocument(doc, [i]) for i, doc in enumer
 doc2vec_model = gensim.models.Doc2Vec(documents, vector_size=100, window=5, min_count=1, workers=4)
 
 # Infer document vectors for training and testing data
+import numpy as np
+
+# Infer document vectors for training and testing data
 X_doc2vec_train = np.array([doc2vec_model.infer_vector(doc) for doc in X_text_train])
 X_doc2vec_test = np.array([doc2vec_model.infer_vector(doc) for doc in X_text_test])
 
-# Combine Doc2Vec embeddings with structural features
-X_train_combined = np.array([doc_vec + struct_feat for doc_vec, struct_feat in zip(X_doc2vec_train, X_structural_train)])
-X_test_combined = np.array([doc_vec + struct_feat for doc_vec, struct_feat in zip(X_doc2vec_test, X_structural_test)])
+# Convert structural features to NumPy arrays
+X_structural_train = np.array(X_structural_train)
+X_structural_test = np.array(X_structural_test)
+
+# Check array shapes
+print("X_doc2vec_train shape:", X_doc2vec_train.shape)
+print("X_doc2vec_test shape:", X_doc2vec_test.shape)
+print("X_structural_train shape:", X_structural_train.shape)
+print("X_structural_test shape:", X_structural_test.shape)
+
+# Perform element-wise addition
+X_train_combined = X_doc2vec_train + X_structural_train
+X_test_combined = X_doc2vec_test + X_structural_test
 
 
 # Scale combined features
