@@ -1,63 +1,84 @@
+import os
 import pdfplumber
+import gensim
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, classification_report
 
-def is_section_title(element):
-    # Check if the element is at the top of the page, in the center, and in bold font
-    return (element['top'] < 50) and (element['x0'] < 100) and (element['x1'] > 400) and (element['fontname'] == 'Arial-BoldMT')
-
-def is_heading(element):
-    # Check if the element starts with a number and is in bold font
-    return element['text'].strip().startswith(('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')) and element['fontname'] == 'Arial-BoldMT'
-
-def extract_headings_and_sections(pdf_path):
-    headings_and_sections = []
-    
-    with pdfplumber.open(pdf_path) as pdf:
-        section_title = None
-        section_headings = []
-        
+# Function to extract text from PDF
+def extract_text_from_pdf(pdf_path):
+    with open(pdf_path, "rb") as f:
+        pdf = pdfplumber.open(f)
+        text = ""
         for page in pdf.pages:
-            # Extract all elements (text and their styling) from the page
-            elements = page.extract_words()
-            
-            # Iterate through each element on the page
-            for element in elements:
-                # Check if the element is a section title
-                if is_section_title(element):
-                    # If a new section title is found, add the previous section and its headings to the list
-                    if section_title:
-                        headings_and_sections.append({
-                            'section_title': section_title,
-                            'headings': section_headings
-                        })
-                    
-                    # Set the new section title and clear the list of headings
-                    section_title = element['text']
-                    section_headings = []
-                elif is_heading(element):
-                    # If element is a heading, add it to the list of headings
-                    section_headings.append(element['text'])
-            
-            # Add the headings from the current page to the current section
-            if section_headings:
-                headings_and_sections.append({
-                    'section_title': section_title,
-                    'headings': section_headings
-                })
-    
-    return headings_and_sections
+            text += page.extract_text()
+        return text
 
-def print_headings_and_sections(headings_and_sections):
-    for section in headings_and_sections:
-        print(f"Section Title: {section['section_title']}")
-        print("Headings:")
-        for heading in section['headings']:
-            print(f"- {heading}")
-        print()
+# Function to extract structural features from PDF text
+def extract_structural_features(text):
+    num_pages = text.count('\f')
+    num_chars = len(text)
+    num_words = len(text.split())
+    num_paragraphs = len(text.split('\n\n'))
+    return [num_pages, num_chars, num_words, num_paragraphs]
 
-def main():
-    pdf_file_path = "your_pdf_file.pdf"  # Replace with the path to your PDF file
-    headings_and_sections = extract_headings_and_sections(pdf_file_path)
-    print_headings_and_sections(headings_and_sections)
+# Function to load and preprocess the document dataset
+def load_dataset(data_path, test_size=0.2, random_state=42):
+    texts = []
+    structural_features = []
+    labels = []
 
-if __name__ == "__main__":
-    main()
+    categories = os.listdir(data_path)
+    for category in categories:
+        category_path = os.path.join(data_path, category)
+        files = os.listdir(category_path)
+        for file in files:
+            pdf_path = os.path.join(category_path, file)
+            text = extract_text_from_pdf(pdf_path)
+            if text:
+                features = extract_structural_features(text)
+                texts.append(gensim.utils.simple_preprocess(text))  # Tokenize text for Doc2Vec
+                structural_features.append(features)
+                labels.append(category)
+
+    # Split the dataset into training and testing sets
+    X_text_train, X_text_test, X_structural_train, X_structural_test, y_train, y_test = train_test_split(
+        texts, structural_features, labels, test_size=test_size, random_state=random_state)
+
+    return X_text_train, X_text_test, X_structural_train, X_structural_test, y_train, y_test
+
+# Load and preprocess the dataset
+data_path = "path/to/dataset"
+X_text_train, X_text_test, X_structural_train, X_structural_test, y_train, y_test = load_dataset(data_path)
+
+# Train Doc2Vec model
+documents = [gensim.models.doc2vec.TaggedDocument(doc, [i]) for i, doc in enumerate(X_text_train)]
+doc2vec_model = gensim.models.Doc2Vec(documents, vector_size=100, window=5, min_count=1, workers=4)
+
+# Infer document vectors for training and testing data
+X_doc2vec_train = [doc2vec_model.infer_vector(doc) for doc in X_text_train]
+X_doc2vec_test = [doc2vec_model.infer_vector(doc) for doc in X_text_test]
+
+# Combine Doc2Vec embeddings with structural features
+X_train_combined = [doc_vec + struct_feat for doc_vec, struct_feat in zip(X_doc2vec_train, X_structural_train)]
+X_test_combined = [doc_vec + struct_feat for doc_vec, struct_feat in zip(X_doc2vec_test, X_structural_test)]
+
+# Scale combined features
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train_combined)
+X_test_scaled = scaler.transform(X_test_combined)
+
+# Train SVM classifier
+clf = SVC(kernel='linear')
+clf.fit(X_train_scaled, y_train)
+
+# Predict labels for test set
+y_pred = clf.predict(X_test_scaled)
+
+# Evaluate classifier
+accuracy = accuracy_score(y_test, y_pred)
+print("Accuracy:", accuracy)
+print("Classification Report:")
+print(classification_report(y_test, y_pred))
+
