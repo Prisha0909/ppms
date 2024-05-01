@@ -1,92 +1,96 @@
 import os
-import re
-import spacy
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import accuracy_score
-from sklearn.model_selection import train_test_split
 import numpy as np
-import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, Conv1D, GlobalMaxPooling1D, Dense, Dropout
+import pdfplumber
 
-# Load dataset using PDF to text extraction function
+# Function to extract text from PDF using pdfplumber
 def extract_text_from_pdf(pdf_path):
-    # Your PDF to text extraction function using pdfplumber
-    pass
-
-data_path = "path/to/dataset"
-categories = os.listdir(data_path)
-docs = []
-labels = []
-for category in categories:
-    category_path = os.path.join(data_path, category)
-    files = os.listdir(category_path)
-    for file in files:
-        text = extract_text_from_pdf(os.path.join(category_path, file))
-        docs.append(text)
-        labels.append(category)
-
-X_train, X_test, y_train, y_test = train_test_split(docs, labels, test_size=0.3, random_state=42, shuffle=True)
-
-# Load spaCy English model
-nlp = spacy.load("en_core_web_sm")
-
-# Define preprocessing steps using spaCy
-def preprocess_text(text):
-    # Convert to lowercase
-    text = text.lower()
-    # Remove non-alphanumeric characters
-    text = re.sub(r'[^a-zA-Z0-9\s]', '', text, re.I | re.A)
-    # Tokenize text using spaCy
-    tokens = nlp(text)
-    # Lemmatize tokens
-    tokens = [token.lemma_ for token in tokens if not token.is_stop]
-    # Rejoin tokens into a string
-    text = ' '.join(tokens)
+    with pdfplumber.open(pdf_path) as pdf:
+        text = ""
+        for page in pdf.pages:
+            text += page.extract_text()
     return text
 
-# list of alpha values
-alpha_values = np.linspace(0, 2, num=11)
+# Function to preprocess text data
+def preprocess_text(text):
+    # Add your preprocessing steps here
+    processed_text = text.lower()  # Example: Convert text to lowercase
+    return processed_text
 
-# Initialize lists to store the accuracy values
-train_acc = []
-test_acc = []
+# Function to predict the category of a PDF file
+def predict_category(pdf_path):
+    text = extract_text_from_pdf(pdf_path)
+    processed_text = preprocess_text(text)
+    sequences = tokenizer.texts_to_sequences([processed_text])
+    padded_sequences = tf.keras.preprocessing.sequence.pad_sequences(sequences, maxlen=max_length, padding='post')
+    prediction = model.predict(padded_sequences)
+    predicted_class = label_encoder.inverse_transform([np.argmax(prediction)])[0]
+    return predicted_class
 
-# Define the pipeline
-for alpha in alpha_values:
-    nb_pipeline = Pipeline([
-        ('preprocess', CountVectorizer(preprocessor=preprocess_text,
-                                       ngram_range=(1, 1), max_df=0.8, min_df=2)),
-        ('tfidf', TfidfTransformer()),
-        ('nb', MultinomialNB(alpha=alpha)),
-    ])
+# Load dataset
+dataset_dir = "path/to/your/Documents/folder"
+folders = os.listdir(dataset_dir)
 
-    # Fit the model
-    print("Fitting")
-    nb_pipeline.fit(X_train, y_train)
-    print("done")
+X = []  # List to store preprocessed text data
+y = []  # List to store corresponding labels
 
-    # calculate accuracy on training set
-    train_predicted = nb_pipeline.predict(X_train)
-    train_accuracy = accuracy_score(y_train, train_predicted)
-    train_acc.append(train_accuracy)
+for folder in folders:
+    folder_path = os.path.join(dataset_dir, folder)
+    if os.path.isdir(folder_path):
+        files = os.listdir(folder_path)
+        for file in files:
+            file_path = os.path.join(folder_path, file)
+            if file.endswith(".pdf"):
+                text = extract_text_from_pdf(file_path)
+                processed_text = preprocess_text(text)
+                X.append(processed_text)
+                y.append(folder)  # Assuming folder name represents the category
 
-    # calculate on test set
-    test_predict = nb_pipeline.predict(X_test)
-    test_accuracy = accuracy_score(y_test, test_predict)
-    test_acc.append(test_accuracy)
+# Convert labels to numerical values
+label_encoder = LabelEncoder()
+y = label_encoder.fit_transform(y)
 
-# Plot the accuracy values
-plt.plot(alpha_values, train_acc, '-o', label='Training Set')
-plt.plot(alpha_values, test_acc, '-o', label='Test Set')
-plt.xlabel('Alpha Values')
-plt.ylabel('Accuracy')
-plt.title('Accuracy vs Alpha Values for Multinomial Naive Bayes Model')
-plt.legend()
-plt.show()
+# Split data into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Predicting Document Types for New Document
-new_document_text = "This is a new document text to predict its category."
-preprocessed_new_document = preprocess_text(new_document_text)
-predicted_category = nb_pipeline.predict([preprocessed_new_document])
-print("Predicted category for new document:", predicted_category)
+# Tokenize and pad sequences
+tokenizer = tf.keras.preprocessing.text.Tokenizer()
+tokenizer.fit_on_texts(X_train)
+
+X_train = tokenizer.texts_to_sequences(X_train)
+X_test = tokenizer.texts_to_sequences(X_test)
+
+vocab_size = len(tokenizer.word_index) + 1  # Add 1 for padding
+max_length = 1000  # Adjust as needed
+
+X_train = tf.keras.preprocessing.sequence.pad_sequences(X_train, maxlen=max_length, padding='post')
+X_test = tf.keras.preprocessing.sequence.pad_sequences(X_test, maxlen=max_length, padding='post')
+
+# Define CNN model
+model = Sequential()
+model.add(Embedding(input_dim=vocab_size, output_dim=100, input_length=max_length))
+model.add(Conv1D(128, 5, activation='relu'))
+model.add(GlobalMaxPooling1D())
+model.add(Dense(64, activation='relu'))
+model.add(Dropout(0.5))
+num_classes = len(np.unique(y))  # Number of output classes
+model.add(Dense(num_classes, activation='softmax'))
+
+# Compile model
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+# Train model
+model.fit(X_train, y_train, epochs=10, batch_size=32, validation_data=(X_test, y_test))
+
+# Evaluate model
+loss, accuracy = model.evaluate(X_test, y_test)
+print("Test Accuracy:", accuracy)
+
+# Example usage of prediction
+pdf_file_path = "path/to/your/pdf/file.pdf"
+predicted_category = predict_category(pdf_file_path)
+print("Predicted Category:", predicted_category)
