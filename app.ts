@@ -32,21 +32,29 @@ for section_folder in os.listdir(base_dir):
                     # Split content by the delimiter ###xxx###
                     sub_clauses = content.split("###xxx###")
                     for sub_clause in sub_clauses:
-                        match = re.match(r"###(.+?)###(.+)", sub_clause, re.DOTALL)
-                        if match:
-                            sub_section_name = match.group(1).strip()
-                            clause_text = match.group(2).strip()
+                        # Find all matches of the pattern ###Sub-section name###Sub-clause text
+                        matches = re.findall(r"###(.+?)###(.+)", sub_clause, re.DOTALL)
+                        if matches:
+                            for match in matches:
+                                sub_section_name = match[0].strip()
+                                clause_text = match[1].strip()
+                                if clause_text:
+                                    documents.append({
+                                        "text": preprocess_text(clause_text),
+                                        "section": section_name,
+                                        "clause": clause_name,
+                                        "sub_section": sub_section_name
+                                    })
                         else:
-                            sub_section_name = None
+                            # No sub-section name, just use the entire sub_clause text
                             clause_text = sub_clause.strip()
-                        
-                        if clause_text:
-                            documents.append({
-                                "text": preprocess_text(clause_text),
-                                "section": section_name,
-                                "clause": clause_name,
-                                "sub_section": sub_section_name
-                            })
+                            if clause_text:
+                                documents.append({
+                                    "text": preprocess_text(clause_text),
+                                    "section": section_name,
+                                    "clause": clause_name,
+                                    "sub_section": None
+                                })
 
 # Convert to DataFrame for easier handling
 df = pd.DataFrame(documents)
