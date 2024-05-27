@@ -70,18 +70,21 @@ def predict_section_clause(input_text, vectorizer, df, X):
     most_similar_clause_index = similarities[most_similar_section][1]
     most_similar_clause = df.loc[most_similar_clause_index]
     
-    return most_similar_clause['section'], most_similar_clause['clause'], most_similar_clause.get('sub_section')
+    return most_similar_section, most_similar_clause['clause'], most_similar_clause.get('sub_section')
 
-def parse_document(document, vectorizer, df, X):
-    sections = re.split(r'\n\n+', document)  # Split sections by double newlines
-    results = []
-    for section in sections:
-        sub_clauses = re.split(r'\n+', section)  # Split clauses by single newlines
-        for sub_clause in sub_clauses:
-            if sub_clause.strip():
-                result = predict_section_clause(sub_clause, vectorizer, df, X)
-                results.append((sub_clause.strip(), result))
-    return results
+def slice_document(document_text, df, vectorizer, X):
+    slices = []
+    for _, row in df.iterrows():
+        section_name = row['section']
+        clause_name = row['clause']
+        clause_text = row['text']
+        section_indices = [m.start() for m in re.finditer(re.escape(clause_text), document_text)]
+        for start_index in section_indices:
+            end_index = start_index + len(clause_text)
+            sliced_text = document_text[start_index:end_index]
+            section, clause, sub_section = predict_section_clause(sliced_text, vectorizer, df, X)
+            slices.append((sliced_text.strip(), section, clause))
+    return slices
 
 def extract_text_from_pdf(pdf_path):
     text = ""
@@ -99,10 +102,7 @@ if __name__ == "__main__":
     pdf_path = 'path/to/your/document.pdf'  # Replace with your PDF file path
     document_text = extract_text_from_pdf(pdf_path)
     
-    parsed_results = parse_document(document_text, vectorizer, df, X)
+    slices = slice_document(document_text, df, vectorizer, X)
 
-    for sub_clause, (section, clause, sub_section) in parsed_results:
-        if sub_section:
-            print(f"Sub-clause: '{sub_clause}'\nPredicted Section: {section}, Clause: {clause}, Sub-section: {sub_section}\n")
-        else:
-            print(f"Sub-clause: '{sub_clause}'\nPredicted Section: {section}, Clause: {clause}\n")
+    for sliced_text, section, clause in slices:
+        print(f"Sliced Text: '{sliced_text}'\nSection: {section}, Clause: {clause}\n")
