@@ -79,6 +79,7 @@ def slice_document(document_text, df, vectorizer, X):
         clause_name = row['clause']
         clause_text = row['text']
         section_indices = [m.start() for m in re.finditer(re.escape(clause_text), document_text)]
+        print(f"DEBUG: Found {len(section_indices)} occurrences of '{clause_text}' in document.")
         for start_index in section_indices:
             end_index = start_index + len(clause_text)
             sliced_text = document_text[start_index:end_index]
