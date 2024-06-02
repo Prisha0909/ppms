@@ -6,6 +6,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import pdfplumber
 
+# Preprocessing function
 def preprocess_text(text):
     text = text.lower()
     text = re.sub(r'\d+', '', text)
@@ -13,6 +14,7 @@ def preprocess_text(text):
     text = text.strip()
     return text
 
+# Function to load dataset
 def load_dataset(base_dir='dataset/'):
     documents = []
     
@@ -53,6 +55,7 @@ def load_dataset(base_dir='dataset/'):
 
     return pd.DataFrame(documents)
 
+# Function to predict section and clause
 def predict_section_clause(input_text, vectorizer, df, X):
     input_text_preprocessed = preprocess_text(input_text)
     input_text_vectorized = vectorizer.transform([input_text_preprocessed])
@@ -72,21 +75,21 @@ def predict_section_clause(input_text, vectorizer, df, X):
     
     return most_similar_section, most_similar_clause['clause'], most_similar_clause.get('sub_section')
 
+# Function to slice document based on dataset
 def slice_document(document_text, df, vectorizer, X):
     slices = []
-    for _, row in df.iterrows():
-        section_name = row['section']
-        clause_name = row['clause']
-        clause_text = row['text']
-        section_indices = [m.start() for m in re.finditer(re.escape(clause_text), document_text)]
-        print(f"DEBUG: Found {len(section_indices)} occurrences of '{clause_text}' in document.")
-        for start_index in section_indices:
-            end_index = start_index + len(clause_text)
-            sliced_text = document_text[start_index:end_index]
-            section, clause, sub_section = predict_section_clause(sliced_text, vectorizer, df, X)
-            slices.append((sliced_text.strip(), section, clause))
+    # Splitting the document into paragraphs
+    paragraphs = document_text.split('\n')
+    
+    for paragraph in paragraphs:
+        paragraph = paragraph.strip()
+        if paragraph:
+            section, clause, sub_section = predict_section_clause(paragraph, vectorizer, df, X)
+            slices.append((paragraph, section, clause, sub_section))
+    
     return slices
 
+# Function to extract text from PDF
 def extract_text_from_pdf(pdf_path):
     text = ""
     with pdfplumber.open(pdf_path) as pdf:
@@ -94,6 +97,7 @@ def extract_text_from_pdf(pdf_path):
             text += page.extract_text() + "\n"
     return text
 
+# Main code execution
 if __name__ == "__main__":
     df = load_dataset()
 
@@ -105,5 +109,5 @@ if __name__ == "__main__":
     
     slices = slice_document(document_text, df, vectorizer, X)
 
-    for sliced_text, section, clause in slices:
-        print(f"Sliced Text: '{sliced_text}'\nSection: {section}, Clause: {clause}\n")
+    for sliced_text, section, clause, sub_section in slices:
+        print(f"Sliced Text: '{sliced_text}'\nSection: {section}, Clause: {clause}, Sub-section: {sub_section}\n")
