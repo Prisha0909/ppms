@@ -73,20 +73,36 @@ def predict_section_clause(input_text, vectorizer, df, X):
     most_similar_clause_index = similarities[most_similar_section][1]
     most_similar_clause = df.loc[most_similar_clause_index]
     
-    return most_similar_section, most_similar_clause['clause'], most_similar_clause.get('sub_section')
+    return most_similar_clause['section'], most_similar_clause['clause'], most_similar_clause.get('sub_section')
 
 # Function to slice document based on dataset
 def slice_document(document_text, df, vectorizer, X):
     slices = []
-    # Splitting the document into paragraphs
-    paragraphs = document_text.split('\n')
-    
-    for paragraph in paragraphs:
+    current_section = None
+    current_clause = None
+    current_text = []
+
+    # Iterate over each paragraph in the document
+    for paragraph in document_text.split('\n\n'):
         paragraph = paragraph.strip()
         if paragraph:
             section, clause, sub_section = predict_section_clause(paragraph, vectorizer, df, X)
-            slices.append((paragraph, section, clause, sub_section))
+            if current_section is None:
+                current_section = section
+                current_clause = clause
+                current_sub_section = sub_section
+            elif section != current_section or clause != current_clause or sub_section != current_sub_section:
+                slices.append((current_text, current_section, current_clause, current_sub_section))
+                current_section = section
+                current_clause = clause
+                current_sub_section = sub_section
+                current_text = []
+            current_text.append(paragraph)
     
+    # Add the last collected text
+    if current_text:
+        slices.append((current_text, current_section, current_clause, current_sub_section))
+
     return slices
 
 # Function to extract text from PDF
@@ -94,20 +110,27 @@ def extract_text_from_pdf(pdf_path):
     text = ""
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
-            text += page.extract_text() + "\n"
+            text += page.extract_text() + "\n\n"
     return text
 
 # Main code execution
 if __name__ == "__main__":
+    # Load the dataset
     df = load_dataset()
 
+    # Initialize the vectorizer and fit the dataset text
     vectorizer = TfidfVectorizer()
     X = vectorizer.fit_transform(df['text'])
 
+    # Path to the PDF file
     pdf_path = 'path/to/your/document.pdf'  # Replace with your PDF file path
+
+    # Extract text from the PDF
     document_text = extract_text_from_pdf(pdf_path)
     
+    # Slice the document based on the dataset
     slices = slice_document(document_text, df, vectorizer, X)
 
+    # Print the results
     for sliced_text, section, clause, sub_section in slices:
-        print(f"Sliced Text: '{sliced_text}'\nSection: {section}, Clause: {clause}, Sub-section: {sub_section}\n")
+        print(f"Sliced Text: '{' '.join(sliced_text)}'\nSection: {section}, Clause: {clause}, Sub-section: {sub_section}\n")
