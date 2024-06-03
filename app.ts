@@ -55,53 +55,53 @@ def load_dataset(base_dir='dataset/'):
 
     return pd.DataFrame(documents)
 
-# Function to predict section and clause
-def predict_section_clause(input_text, vectorizer, df, X):
+# Function to predict clause within a section
+def predict_clause(input_text, section_name, df, vectorizer, X):
     input_text_preprocessed = preprocess_text(input_text)
     input_text_vectorized = vectorizer.transform([input_text_preprocessed])
     
-    similarities = {}
-    for section_name in df['section'].unique():
-        section_indices = df[df['section'] == section_name].index
-        section_X = X[section_indices]
-        section_similarities = cosine_similarity(input_text_vectorized, section_X)
-        max_similarity = section_similarities.max()
-        max_similarity_index = section_indices[section_similarities.argmax()]
-        similarities[section_name] = (max_similarity, max_similarity_index)
+    section_indices = df[df['section'] == section_name].index
+    section_X = X[section_indices]
+    section_similarities = cosine_similarity(input_text_vectorized, section_X)
+    max_similarity_index = section_indices[section_similarities.argmax()]
+    most_similar_clause = df.loc[max_similarity_index]
     
-    most_similar_section = max(similarities, key=lambda x: similarities[x][0])
-    most_similar_clause_index = similarities[most_similar_section][1]
-    most_similar_clause = df.loc[most_similar_clause_index]
-    
-    return most_similar_clause['section'], most_similar_clause['clause'], most_similar_clause.get('sub_section')
+    return most_similar_clause['clause'], most_similar_clause.get('sub_section')
 
 # Function to slice document based on dataset
-def slice_document(document_text, df, vectorizer, X):
+def slice_document(document_text, section_names, df, vectorizer, X):
     slices = []
     current_section = None
-    current_clause = None
     current_text = []
+    paragraphs = document_text.split('\n\n')
 
-    # Iterate over each paragraph in the document
-    for paragraph in document_text.split('\n\n'):
+    for paragraph in paragraphs:
         paragraph = paragraph.strip()
         if paragraph:
-            section, clause, sub_section = predict_section_clause(paragraph, vectorizer, df, X)
-            if current_section is None:
-                current_section = section
-                current_clause = clause
-                current_sub_section = sub_section
-            elif section != current_section or clause != current_clause or sub_section != current_sub_section:
-                slices.append((current_text, current_section, current_clause, current_sub_section))
-                current_section = section
-                current_clause = clause
-                current_sub_section = sub_section
-                current_text = []
-            current_text.append(paragraph)
+            # Check if the paragraph matches any section name
+            is_section = False
+            for section_name in section_names:
+                if re.search(r'\b' + re.escape(section_name.lower()) + r'\b', paragraph.lower()):
+                    if current_text and current_section:
+                        # Process the collected paragraphs under the current section
+                        for text in current_text:
+                            clause, sub_section = predict_clause(text, current_section, df, vectorizer, X)
+                            slices.append((text, current_section, clause, sub_section))
+                    
+                    # Start new section
+                    current_section = section_name
+                    current_text = []
+                    is_section = True
+                    break
+            
+            if not is_section:
+                current_text.append(paragraph)
     
-    # Add the last collected text
-    if current_text:
-        slices.append((current_text, current_section, current_clause, current_sub_section))
+    # Add the last collected paragraphs
+    if current_text and current_section:
+        for text in current_text:
+            clause, sub_section = predict_clause(text, current_section, df, vectorizer, X)
+            slices.append((text, current_section, clause, sub_section))
 
     return slices
 
@@ -122,6 +122,9 @@ if __name__ == "__main__":
     vectorizer = TfidfVectorizer()
     X = vectorizer.fit_transform(df['text'])
 
+    # Get section names from the dataset
+    section_names = df['section'].unique()
+
     # Path to the PDF file
     pdf_path = 'path/to/your/document.pdf'  # Replace with your PDF file path
 
@@ -129,8 +132,8 @@ if __name__ == "__main__":
     document_text = extract_text_from_pdf(pdf_path)
     
     # Slice the document based on the dataset
-    slices = slice_document(document_text, df, vectorizer, X)
+    slices = slice_document(document_text, section_names, df, vectorizer, X)
 
     # Print the results
     for sliced_text, section, clause, sub_section in slices:
-        print(f"Sliced Text: '{' '.join(sliced_text)}'\nSection: {section}, Clause: {clause}, Sub-section: {sub_section}\n")
+        print(f"Sliced Text: '{sliced_text}'\nSection: {section}, Clause: {clause}, Sub-section: {sub_section}\n")
