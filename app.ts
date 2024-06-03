@@ -84,9 +84,9 @@ def slice_document(document_text, section_names, df, vectorizer, X):
                 if re.search(r'\b' + re.escape(section_name.lower()) + r'\b', paragraph.lower()):
                     if current_text and current_section:
                         # Process the collected paragraphs under the current section
-                        for text in current_text:
-                            clause, sub_section = predict_clause(text, current_section, df, vectorizer, X)
-                            slices.append((text, current_section, clause, sub_section))
+                        full_text = " ".join(current_text)
+                        clause, sub_section = predict_clause(full_text, current_section, df, vectorizer, X)
+                        slices.append((full_text, current_section, clause, sub_section))
                     
                     # Start new section
                     current_section = section_name
@@ -99,9 +99,9 @@ def slice_document(document_text, section_names, df, vectorizer, X):
     
     # Add the last collected paragraphs
     if current_text and current_section:
-        for text in current_text:
-            clause, sub_section = predict_clause(text, current_section, df, vectorizer, X)
-            slices.append((text, current_section, clause, sub_section))
+        full_text = " ".join(current_text)
+        clause, sub_section = predict_clause(full_text, current_section, df, vectorizer, X)
+        slices.append((full_text, current_section, clause, sub_section))
 
     return slices
 
