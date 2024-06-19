@@ -95,3 +95,97 @@ def process_uploaded_document(file_path):
 file_path = 'uploaded_document.pdf'  # Path to the uploaded document
 result_output = process_uploaded_document(file_path)
 print(result_output)
+# Function to split document into sections and subsections
+def split_document(document_text, known_sections):
+    sections = []
+    section_patterns = [re.escape(sec) for sec in known_sections.keys()]
+    pattern = re.compile(r'(' + '|'.join(section_patterns) + r')', re.IGNORECASE)
+    
+    split_points = [(m.start(), m.group()) for m in pattern.finditer(document_text)]
+    split_points.append((len(document_text), ''))
+
+    for i in range(len(split_points) - 1):
+        start, section_name = split_points[i]
+        end, _ = split_points[i + 1]
+        section_text = document_text[start:end].strip()
+        
+        if section_name in known_sections:
+            subsections = split_into_subsections(section_text, section_name)
+            sections.append({
+                "section_name": section_name,
+                "subsections": subsections
+            })
+        else:
+            # Handle unknown section name (optional)
+            print(f"Unknown section name: {section_name}")
+    
+    return sections
+
+# Function to split section into subsections
+def split_into_subsections(section_text, section_name):
+    subsections = []
+    subsection_patterns = [re.escape(sub) for sub in known_sections[section_name]]
+    pattern = re.compile(r'(' + '|'.join(subsection_patterns) + r')', re.IGNORECASE)
+
+    split_points = [(m.start(), m.group()) for m in pattern.finditer(section_text)]
+    split_points.append((len(section_text), ''))
+
+    for i in range(len(split_points) - 1):
+        start, subsection_name = split_points[i]
+        end, _ = split_points[i + 1]
+        subsection_text = section_text[start:end].strip()
+        
+        if subsection_name in known_sections[section_name]:
+            subsections.append({
+                "subsection_name": subsection_name,
+                "subsection_content": subsection_text
+            })
+        else:
+            # Handle unknown subsection name (optional)
+            print(f"Unknown subsection name in section {section_name}: {subsection_name}")
+    
+    return subsections
+<div class="file-upload">
+  <h2>Upload PDF Document</h2>
+  <input type="file" (change)="onFileSelected($event)" accept=".pdf">
+  <button (click)="onUpload()" [disabled]="!selectedFile">Upload</button>
+</div>
+import { Component } from '@angular/core';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+
+@Component({
+  selector: 'app-file-upload',
+  templateUrl: './file-upload.component.html',
+  styleUrls: ['./file-upload.component.css']
+})
+export class FileUploadComponent {
+  selectedFile: File | null = null;
+  uploadResponse: string = '';
+
+  constructor(private http: HttpClient) {}
+
+  onFileSelected(event: any): void {
+    this.selectedFile = event.target.files[0];
+  }
+
+  onUpload(): void {
+    if (this.selectedFile) {
+      const formData = new FormData();
+      formData.append('file', this.selectedFile, this.selectedFile.name);
+
+      this.http.post('http://localhost:3000/upload', formData).subscribe(
+        response => {
+          console.log('File uploaded successfully', response);
+          this.uploadResponse = 'File uploaded successfully!';
+        },
+        (error: HttpErrorResponse) => {
+          console.error('File upload failed', error);
+          this.uploadResponse = 'File upload failed. Please try again.';
+        }
+      );
+    }
+  }
+}
+
+
+
