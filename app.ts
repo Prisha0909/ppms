@@ -15,7 +15,7 @@ def preprocess_text(text):
     text = text.strip()
     return text
 
-# Function to extract text segments from a PDF
+# Function to extract text segments from a PDF using pdfplumber
 def extract_segments_from_pdf(pdf_path):
     segments = []
     with pdfplumber.open(pdf_path) as pdf:
@@ -50,12 +50,9 @@ def predict_clauses_within_segments(segments, df, vectorizer):
         similarities = {}
         for section_name in df['section'].unique():
             section_indices = df[df['section'] == section_name].index
-            section_X = X[section_indices]
+            section_X = vectorizer.transform(df.loc[section_indices, 'text'])
             
-            # Ensure section_X matches the vectorizer's vocabulary
-            section_X_transformed = vectorizer.transform(df.loc[section_indices, 'text'])
-            
-            section_similarities = cosine_similarity(text_vector, section_X_transformed)
+            section_similarities = cosine_similarity(text_vector, section_X)
             max_similarity = section_similarities.max()
             max_similarity_index = section_indices[section_similarities.argmax()]
             similarities[section_name] = (max_similarity, max_similarity_index)
