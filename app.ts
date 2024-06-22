@@ -173,13 +173,17 @@ def process_pdf(pdf_path, dataset_structure, df, vectorizer):
 # prediction_model = ...
 
 # Load dataset structure
-dataset_structure = load_dataset_structure()
+dataset_structure = documents  # Adjust this if you have a specific structure
 
 # Path to the PDF file
-pdf_path = 'path/to/your/pdf'
+pdf_path = 'path/to/your/pdf.pdf'
 
 # Process the PDF and get predictions
 predictions = process_pdf(pdf_path, dataset_structure, df, vectorizer)
 
 # Convert predictions to JSON
 predictions_to_json(predictions)
+
+# Display predictions
+with open('predictions.json', 'r') as f:
+    print(f.read())
