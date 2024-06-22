@@ -1,10 +1,38 @@
-import pdfplumber
 import os
 import re
 import string
 import json
+import PyPDF2
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-# Preprocess text function
+# Extract text from PDF
+def extract_text_from_pdf(pdf_path):
+    text = ""
+    with open(pdf_path, 'rb') as file:
+        reader = PyPDF2.PdfFileReader(file)
+        for page_num in range(reader.numPages):
+            page = reader.getPage(page_num)
+            text += page.extractText()
+    return text
+
+# Load dataset structure
+def load_dataset_structure(base_dir='dataset/'):
+    structure = []
+    for section_folder in os.listdir(base_dir):
+        section_path = os.path.join(base_dir, section_folder)
+        if os.path.isdir(section_path):
+            for clause_file in os.listdir(section_path):
+                clause_path = os.path.join(section_path, clause_file)
+                if os.path.isfile(clause_path):
+                    clause_name = os.path.splitext(clause_file)[0]
+                    structure.append({
+                        "section": section_folder,
+                        "sub_section": clause_name
+                    })
+    return structure
+
+# Preprocess text
 def preprocess_text(text):
     text = text.lower()
     text = re.sub(r'\d+', '', text)
@@ -12,180 +40,95 @@ def preprocess_text(text):
     text = text.strip()
     return text
 
-# Load known sections and subsections from the dataset
-base_dir = 'dataset/'
-known_sections = {}
-
-for section_folder in os.listdir(base_dir):
-    section_path = os.path.join(base_dir, section_folder)
-    if os.path.isdir(section_path):
-        known_sections[section_folder] = []
-        for clause_file in os.listdir(section_path):
-            clause_name = os.path.splitext(clause_file)[0]
-            known_sections[section_folder].append(clause_name)
-
-# Function to extract text from PDF
-def extract_text_from_pdf(file_path):
-    document_text = ''
-    with pdfplumber.open(file_path) as pdf:
-        for page in pdf.pages:
-            document_text += page.extract_text() + '\n'
-    return document_text
-
-# Function to split document into sections and subsections
-def split_document(document_text, known_sections):
-    sections = []
-    section_patterns = [re.escape(sec) for sec in known_sections.keys()]
-    pattern = re.compile(r'(' + '|'.join(section_patterns) + r')', re.IGNORECASE)
+# Find matching segments
+def find_matching_segments(pdf_text, dataset_structure, vectorizer):
+    preprocessed_text = preprocess_text(pdf_text)
+    text_chunks = pdf_text.split('\n')  # Split text into chunks by lines
     
-    split_points = [(m.start(), m.group()) for m in pattern.finditer(document_text)]
-    split_points.append((len(document_text), ''))
-
-    for i in range(len(split_points) - 1):
-        start, section_name = split_points[i]
-        end, _ = split_points[i + 1]
-        section_text = document_text[start:end].strip()
-        
-        if section_text:
-            subsections = split_into_subsections(section_text, section_name)
-            sections.append({
-                "section_name": section_name,
-                "subsections": subsections
-            })
+    structure_texts = [f"{entry['section']} {entry['sub_section']}" for entry in dataset_structure]
+    structure_vectors = vectorizer.fit_transform(structure_texts)
     
-    return sections
-
-# Function to split section into subsections
-def split_into_subsections(section_text, section_name):
-    subsections = []
-    subsection_patterns = [re.escape(sub) for sub in known_sections[section_name]]
-    pattern = re.compile(r'(' + '|'.join(subsection_patterns) + r')', re.IGNORECASE)
-
-    split_points = [(m.start(), m.group()) for m in pattern.finditer(section_text)]
-    split_points.append((len(section_text), ''))
-
-    for i in range(len(split_points) - 1):
-        start, subsection_name = split_points[i]
-        end, _ = split_points[i + 1]
-        subsection_text = section_text[start:end].strip()
-        
-        if subsection_text:
-            subsections.append({
-                "subsection_name": subsection_name,
-                "subsection_content": subsection_text
-            })
-    
-    return subsections
-
-# Function to process uploaded document
-def process_uploaded_document(file_path):
-    document_text = extract_text_from_pdf(file_path)
-    sections = split_document(document_text, known_sections)
-    
-    output = ""
-    for section in sections:
-        output += f"Section name: {section['section_name']}\n"
-        for idx, subsection in enumerate(section['subsections'], start=1):
-            output += f"Subsection{idx} name: {subsection['subsection_name']}\n"
-            output += f"Subsection{idx} content: {subsection['subsection_content']}\n"
-    
-    return output
-
-# Example usage:
-file_path = 'uploaded_document.pdf'  # Path to the uploaded document
-result_output = process_uploaded_document(file_path)
-print(result_output)
-# Function to split document into sections and subsections
-def split_document(document_text, known_sections):
-    sections = []
-    section_patterns = [re.escape(sec) for sec in known_sections.keys()]
-    pattern = re.compile(r'(' + '|'.join(section_patterns) + r')', re.IGNORECASE)
-    
-    split_points = [(m.start(), m.group()) for m in pattern.finditer(document_text)]
-    split_points.append((len(document_text), ''))
-
-    for i in range(len(split_points) - 1):
-        start, section_name = split_points[i]
-        end, _ = split_points[i + 1]
-        section_text = document_text[start:end].strip()
-        
-        if section_name in known_sections:
-            subsections = split_into_subsections(section_text, section_name)
-            sections.append({
-                "section_name": section_name,
-                "subsections": subsections
+    matches = []
+    for chunk in text_chunks:
+        chunk_vector = vectorizer.transform([preprocess_text(chunk)])
+        similarities = cosine_similarity(chunk_vector, structure_vectors)
+        max_sim_idx = similarities.argmax()
+        if similarities[0, max_sim_idx] > 0.5:  # Adjust threshold as needed
+            matches.append({
+                "text": chunk,
+                "section": dataset_structure[max_sim_idx]["section"],
+                "sub_section": dataset_structure[max_sim_idx]["sub_section"]
             })
         else:
-            # Handle unknown section name (optional)
-            print(f"Unknown section name: {section_name}")
-    
-    return sections
-
-# Function to split section into subsections
-def split_into_subsections(section_text, section_name):
-    subsections = []
-    subsection_patterns = [re.escape(sub) for sub in known_sections[section_name]]
-    pattern = re.compile(r'(' + '|'.join(subsection_patterns) + r')', re.IGNORECASE)
-
-    split_points = [(m.start(), m.group()) for m in pattern.finditer(section_text)]
-    split_points.append((len(section_text), ''))
-
-    for i in range(len(split_points) - 1):
-        start, subsection_name = split_points[i]
-        end, _ = split_points[i + 1]
-        subsection_text = section_text[start:end].strip()
-        
-        if subsection_name in known_sections[section_name]:
-            subsections.append({
-                "subsection_name": subsection_name,
-                "subsection_content": subsection_text
+            matches.append({
+                "text": chunk,
+                "section": None,
+                "sub_section": None
             })
-        else:
-            # Handle unknown subsection name (optional)
-            print(f"Unknown subsection name in section {section_name}: {subsection_name}")
+    return matches
+
+# Segment text based on identified sections and sub-sections
+def segment_text_by_matches(matches):
+    segments = {}
+    current_section = None
+    current_sub_section = None
     
-    return subsections
-<div class="file-upload">
-  <h2>Upload PDF Document</h2>
-  <input type="file" (change)="onFileSelected($event)" accept=".pdf">
-  <button (click)="onUpload()" [disabled]="!selectedFile">Upload</button>
-</div>
-import { Component } from '@angular/core';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+    for match in matches:
+        if match["section"]:
+            current_section = match["section"]
+            current_sub_section = match["sub_section"]
+            if current_section not in segments:
+                segments[current_section] = {}
+            if current_sub_section not in segments[current_section]:
+                segments[current_section][current_sub_section] = []
+        if current_section and current_sub_section:
+            segments[current_section][current_sub_section].append(match["text"])
+    
+    return segments
 
-@Component({
-  selector: 'app-file-upload',
-  templateUrl: './file-upload.component.html',
-  styleUrls: ['./file-upload.component.css']
-})
-export class FileUploadComponent {
-  selectedFile: File | null = null;
-  uploadResponse: string = '';
+# Predict clauses within each segment
+def predict_clauses_within_segments(segments, prediction_model, vectorizer):
+    predictions = []
+    for section, sub_sections in segments.items():
+        for sub_section, texts in sub_sections.items():
+            for text in texts:
+                preprocessed_text = preprocess_text(text)
+                text_vector = vectorizer.transform([preprocessed_text])
+                predicted_label = prediction_model.predict(text_vector)
+                predictions.append({
+                    "section": section,
+                    "sub_section": sub_section,
+                    "text": text,
+                    "predicted_label": predicted_label[0]
+                })
+    return predictions
 
-  constructor(private http: HttpClient) {}
+# Convert predictions to JSON
+def predictions_to_json(predictions, output_file='predictions.json'):
+    with open(output_file, 'w') as f:
+        json.dump(predictions, f, indent=4)
 
-  onFileSelected(event: any): void {
-    this.selectedFile = event.target.files[0];
-  }
+# Process PDF and make predictions
+def process_pdf(pdf_path, dataset_structure, prediction_model, vectorizer):
+    pdf_text = extract_text_from_pdf(pdf_path)
+    matches = find_matching_segments(pdf_text, dataset_structure, vectorizer)
+    segments = segment_text_by_matches(matches)
+    predictions = predict_clauses_within_segments(segments, prediction_model, vectorizer)
+    return predictions
 
-  onUpload(): void {
-    if (this.selectedFile) {
-      const formData = new FormData();
-      formData.append('file', this.selectedFile, this.selectedFile.name);
+# Assuming you have already trained your prediction model and TF-IDF vectorizer
+# vectorizer = TfidfVectorizer()
+# Load or define your pre-trained model
+# prediction_model = ...
 
-      this.http.post('http://localhost:3000/upload', formData).subscribe(
-        response => {
-          console.log('File uploaded successfully', response);
-          this.uploadResponse = 'File uploaded successfully!';
-        },
-        (error: HttpErrorResponse) => {
-          console.error('File upload failed', error);
-          this.uploadResponse = 'File upload failed. Please try again.';
-        }
-      );
-    }
-  }
-}
+# Load dataset structure
+dataset_structure = load_dataset_structure()
 
+# Path to the PDF file
+pdf_path = 'path/to/your/pdf'
 
+# Process the PDF and get predictions
+predictions = process_pdf(pdf_path, dataset_structure, prediction_model, vectorizer)
 
+# Convert predictions to JSON
+predictions_to_json(predictions)
