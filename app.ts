@@ -1,39 +1,5 @@
-import { Injectable } from '@angular/core';
+import { Component } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, BehaviorSubject } from 'rxjs';
-
-@Injectable({
-  providedIn: 'root'
-})
-export class DocumentService {
-  private documentData = new BehaviorSubject<any>(null);
-
-  constructor(private http: HttpClient) { }
-
-  uploadPdf(file: File): Observable<any> {
-    const formData = new FormData();
-    formData.append('file', file);
-    return this.http.post<any>('http://localhost:5000/upload-pdf', formData);
-  }
-
-  setDocumentData(data: any): void {
-    this.documentData.next(data);
-  }
-
-  getDocumentData(): Observable<any> {
-    return this.documentData.asObservable();
-  }
-}
-----
-  <div class="app">
-  <div class="top-section">
-    <app-pdf-uploader></app-pdf-uploader>
-    <app-doc-type-display></app-doc-type-display>
-  </div>
-  <app-extracted-text></app-extracted-text>
-</div>
--
-  import { Component } from '@angular/core';
 
 @Component({
   selector: 'app-root',
@@ -41,31 +7,58 @@ export class DocumentService {
   styleUrls: ['./app.component.css']
 })
 export class AppComponent {
+  selectedFile: File;
+  documentType: string;
+  extractedText: string;
+  clauses: any;
+
+  constructor(private http: HttpClient) {}
+
+  onFileChanged(event) {
+    this.selectedFile = event.target.files[0];
+  }
+
+  onUpload() {
+    const uploadData = new FormData();
+    uploadData.append('file', this.selectedFile, this.selectedFile.name);
+
+    this.http.post<any>('http://localhost:5000/upload-pdf', uploadData)
+      .subscribe(
+        (response) => {
+          this.documentType = response.doc_type;
+          this.extractedText = response.text;
+          this.clauses = response.clauses;
+        },
+        (error) => {
+          console.error('Error uploading file', error);
+        }
+      );
+  }
 }
------
-  Module Class (app.module.ts):
-import { BrowserModule } from '@angular/platform-browser';
-import { NgModule } from '@angular/core';
-import { HttpClientModule } from '@angular/common/http';
+----------
+  <div class="container">
+  <div class="row">
+    <div class="col">
+      <input type="file" (change)="onFileChanged($event)">
+      <button (click)="onUpload()">Upload</button>
+    </div>
+    <div class="col">
+      <p>Document Type: {{ documentType }}</p>
+    </div>
+  </div>
 
-import { AppComponent } from './app.component';
-import { PdfUploaderComponent } from './pdf-uploader/pdf-uploader.component';
-import { DocTypeDisplayComponent } from './doc-type-display/doc-type-display.component';
-import { ExtractedTextComponent } from './extracted-text/extracted-text.component';
-import { DocumentService } from './document.service';
-
-@NgModule({
-  declarations: [
-    AppComponent,
-    PdfUploaderComponent,
-    DocTypeDisplayComponent,
-    ExtractedTextComponent
-  ],
-  imports: [
-    BrowserModule,
-    HttpClientModule
-  ],
-  providers: [DocumentService],
-  bootstrap: [AppComponent]
-})
-export class AppModule { }
+  <div class="row">
+    <div class="col">
+      <h3>Extracted Text:</h3>
+      <div>{{ extractedText }}</div>
+    </div>
+    <div class="col">
+      <h3>Predicted Clauses:</h3>
+      <div *ngIf="clauses">
+        <p>Section: {{ clauses.section }}</p>
+        <p>Clause: {{ clauses.clause }}</p>
+        <p *ngIf="clauses.sub_section">Sub-section: {{ clauses.sub_section }}</p>
+      </div>
+    </div>
+  </div>
+</div>
