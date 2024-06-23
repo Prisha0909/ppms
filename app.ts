@@ -1,104 +1,43 @@
-# clause_model.py
-
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import pdfplumber
 import os
-import re
-import string
-import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from classify_model import classify_document
+from clause_model import predict_clauses
 
-# Load and preprocess the dataset
-documents = []
-base_dir = 'dataset/'
+app = Flask(__name__)
+CORS(app)
 
-# Function to preprocess text
-def preprocess_text(text):
-    text = text.lower()
-    text = re.sub(r'\d+', '', text)
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    text = text.strip()
-    return text
+# Create uploads directory if it doesn't exist
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
-# Traverse through the dataset directory structure
-for section_folder in os.listdir(base_dir):
-    section_path = os.path.join(base_dir, section_folder)
-    if os.path.isdir(section_path):
-        for clause_file in os.listdir(section_path):
-            clause_path = os.path.join(section_path, clause_file)
-            if os.path.isfile(clause_path):
-                with open(clause_path, 'r', encoding='utf-8') as file:
-                    content = file.read().strip()
-                    section_name = section_folder
-                    clause_name = os.path.splitext(clause_file)[0]
-                    
-                    # Split content by the delimiter ###xxx###
-                    sub_clauses = content.split("###xxx###")
-                    for sub_clause in sub_clauses:
-                        # Find all matches of the pattern ###Sub-section name###Sub-clause text
-                        matches = re.findall(r"###(.+?)###(.+)", sub_clause, re.DOTALL)
-                        if matches:
-                            for match in matches:
-                                sub_section_name = match[0].strip()
-                                clause_text = match[1].strip()
-                                if clause_text:
-                                    documents.append({
-                                        "text": preprocess_text(clause_text),
-                                        "section": section_name,
-                                        "clause": clause_name,
-                                        "sub_section": sub_section_name
-                                    })
-                        else:
-                            # No sub-section name, just use the entire sub_clause text
-                            clause_text = sub_clause.strip()
-                            if clause_text:
-                                documents.append({
-                                    "text": preprocess_text(clause_text),
-                                    "section": section_name,
-                                    "clause": clause_name,
-                                    "sub_section": None
-                                })
+@app.route('/upload-pdf', methods=['POST'])
+def upload_pdf():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
 
-# Convert to DataFrame for easier handling
-df = pd.DataFrame(documents)
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
 
-# Vectorize the dataset using TF-IDF
-vectorizer = TfidfVectorizer()
-X = vectorizer.fit_transform(df['text'])
+    file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+    file.save(file_path)
 
-def predict_clauses(input_text):
-    # Split input text into paragraphs
-    paragraphs = input_text.split('\n\n')
-    results = []
+    # Extract text from PDF
+    with pdfplumber.open(file_path) as pdf:
+        text = ''
+        for page in pdf.pages:
+            text += page.extract_text()
 
-    for paragraph in paragraphs:
-        # Preprocess the input clause text
-        input_clause_preprocessed = preprocess_text(paragraph)
+    # Classify the document
+    doc_type = classify_document(file_path)
 
-        # Vectorize the input clause
-        input_clause_vectorized = vectorizer.transform([input_clause_preprocessed])
+    # Predict clauses
+    clauses = predict_clauses(text)
 
-        # Calculate similarity for clauses within the same section
-        similarities = {}
-        for section_name in df['section'].unique():
-            section_indices = df[df['section'] == section_name].index
-            section_X = X[section_indices]
-            section_similarities = cosine_similarity(input_clause_vectorized, section_X)
-            max_similarity = section_similarities.max()
-            max_similarity_index = section_indices[section_similarities.argmax()]
-            similarities[section_name] = (max_similarity, max_similarity_index)
+    return jsonify({'doc_type': doc_type, 'text': text, 'clauses': clauses})
 
-        # Find the most similar clause across all sections
-        most_similar_section = max(similarities, key=lambda x: similarities[x][0])
-        most_similar_clause_index = similarities[most_similar_section][1]
-        most_similar_clause = df.loc[most_similar_clause_index]
-
-        # Prepare the result
-        result = {
-            "text": paragraph,
-            "section": most_similar_clause['section'],
-            "clause": most_similar_clause['clause'],
-            "sub_section": most_similar_clause['sub_section'] if most_similar_clause['sub_section'] else None
-        }
-        results.append(result)
-
-    return results
+if __name__ == '__main__':
+    app.run(debug=True)
