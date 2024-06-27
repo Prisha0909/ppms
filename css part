@@ -1,24 +1,190 @@
-.container {
-  display: flex;
-  justify-content: space-between;
+Yes, the provided code includes all the necessary components and services for your Angular application, structured as you described. Here's the full set of files:
+
+1. document.service.ts
+typescript
+Copy code
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, BehaviorSubject } from 'rxjs';
+
+export interface Paragraph {
+  text: string;
+  section: string;
+  clause: string;
+  sub_section: string | null;
 }
 
-.upload-container {
-  width: 30%;
-}
+@Injectable({
+  providedIn: 'root'
+})
+export class DocumentService {
+  private docTypeSubject = new BehaviorSubject<string | null>(null);
+  docType$ = this.docTypeSubject.asObservable();
 
-.extracted-text-container {
-  width: 30%;
-}
+  private paragraphsSubject = new BehaviorSubject<Paragraph[]>([]);
+  paragraphs$ = this.paragraphsSubject.asObservable();
 
-.result-container {
-  width: 30%;
-}
+  constructor(private http: HttpClient) {}
 
-.card {
-  width: 400px;
-}
+  uploadDocument(file: File): void {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
 
-.selected-file {
-  margin-top: 20px;
+    this.http.post<any>('http://localhost:5000/upload-pdf', formData).subscribe(response => {
+      const docType = response.doc_type;
+      const text = response.text;
+      const clauses = response.clauses;
+
+      this.docTypeSubject.next(docType);
+
+      const paragraphs: Paragraph[] = text.split(/\n/).map((paragraph, index) => {
+        const clause = clauses[index] || {};
+        return {
+          text: paragraph,
+          section: clause.section || '',
+          clause: clause.clause || '',
+          sub_section: clause.sub_section || null
+        };
+      });
+
+      this.paragraphsSubject.next(paragraphs);
+    });
+  }
 }
+2. app.component.html
+html
+Copy code
+<div class="container">
+  <app-pdf-uploader></app-pdf-uploader>
+  <app-doc-type-display></app-doc-type-display>
+  <app-extracted-text></app-extracted-text>
+</div>
+3. pdf-uploader.component.ts
+typescript
+Copy code
+import { Component } from '@angular/core';
+import { DocumentService } from '../document.service';
+
+@Component({
+  selector: 'app-pdf-uploader',
+  templateUrl: './pdf-uploader.component.html',
+  styleUrls: ['./pdf-uploader.component.css']
+})
+export class PdfUploaderComponent {
+  constructor(private documentService: DocumentService) {}
+
+  onFileSelected(event: any): void {
+    const file: File = event.target.files[0];
+    if (file) {
+      this.documentService.uploadDocument(file);
+    }
+  }
+}
+4. pdf-uploader.component.html
+html
+Copy code
+<div class="upload-container">
+  <input type="file" (change)="onFileSelected($event)" />
+</div>
+5. doc-type-display.component.ts
+typescript
+Copy code
+import { Component, OnInit } from '@angular/core';
+import { DocumentService } from '../document.service';
+
+@Component({
+  selector: 'app-doc-type-display',
+  templateUrl: './doc-type-display.component.html',
+  styleUrls: ['./doc-type-display.component.css']
+})
+export class DocTypeDisplayComponent implements OnInit {
+  docType: string | null = null;
+
+  constructor(private documentService: DocumentService) {}
+
+  ngOnInit(): void {
+    this.documentService.docType$.subscribe(docType => {
+      this.docType = docType;
+    });
+  }
+}
+6. doc-type-display.component.html
+html
+Copy code
+<div *ngIf="docType" class="doc-type-display">
+  Document Type: {{ docType }}
+</div>
+7. extracted-text.component.ts
+typescript
+Copy code
+import { Component, OnInit } from '@angular/core';
+import { DocumentService, Paragraph } from '../document.service';
+
+@Component({
+  selector: 'app-extracted-text',
+  templateUrl: './extracted-text.component.html',
+  styleUrls: ['./extracted-text.component.css']
+})
+export class ExtractedTextComponent implements OnInit {
+  paragraphs: Paragraph[] = [];
+
+  constructor(private documentService: DocumentService) {}
+
+  ngOnInit(): void {
+    this.documentService.paragraphs$.subscribe(paragraphs => {
+      this.paragraphs = paragraphs;
+    });
+  }
+}
+8. extracted-text.component.html
+html
+Copy code
+<div *ngFor="let paragraph of paragraphs" class="paragraph-container">
+  <p>{{ paragraph.text }}</p>
+  <div *ngIf="paragraph.section || paragraph.clause || paragraph.sub_section" class="prediction-container">
+    <p *ngIf="paragraph.section">Section: {{ paragraph.section }}</p>
+    <p *ngIf="paragraph.clause">Clause: {{ paragraph.clause }}</p>
+    <p *ngIf="paragraph.sub_section">Sub-Section: {{ paragraph.sub_section }}</p>
+  </div>
+</div>
+Additional Adjustments
+Ensure you have defined the necessary CSS classes in your component stylesheets for better presentation.
+
+CommonModule Import
+Make sure to import CommonModule in your module file if you're using *ngIf and other Angular directives.
+
+AppModule
+app.module.ts
+typescript
+Copy code
+import { BrowserModule } from '@angular/platform-browser';
+import { NgModule } from '@angular/core';
+import { HttpClientModule } from '@angular/common/http';
+
+import { AppComponent } from './app.component';
+import { PdfUploaderComponent } from './pdf-uploader/pdf-uploader.component';
+import { DocTypeDisplayComponent } from './doc-type-display/doc-type-display.component';
+import { ExtractedTextComponent } from './extracted-text/extracted-text.component';
+
+@NgModule({
+  declarations: [
+    AppComponent,
+    PdfUploaderComponent,
+    DocTypeDisplayComponent,
+    ExtractedTextComponent
+  ],
+  imports: [
+    BrowserModule,
+    HttpClientModule
+  ],
+  providers: [],
+  bootstrap: [AppComponent]
+})
+export class AppModule { }
+This code completes the implementation of your Angular frontend, ensuring it matches your requirement to handle the paragraph splitting based on your specific condition. Ensure the backend API is correctly set up to handle the file upload and provide the required response format.
+
+
+
+
+
+
