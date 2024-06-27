@@ -1,190 +1,150 @@
-Yes, the provided code includes all the necessary components and services for your Angular application, structured as you described. Here's the full set of files:
+1. Backend Setup (app.py)
+This file will serve as the main Flask application to handle PDF upload, text extraction, document type classification, and clause prediction.
 
-1. document.service.ts
+python
+Copy code
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import pdfplumber
+import os
+import tempfile
+import classify_model  # Import your document type classification model
+import clause_model  # Import your clause prediction model
+
+app = Flask(__name__)
+CORS(app)
+
+# Temporary directory to store uploaded files
+UPLOAD_FOLDER = tempfile.gettempdir()
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Route for uploading a PDF file
+@app.route('/upload-pdf', methods=['POST'])
+def upload_pdf():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if file:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(file_path)
+
+        # Extract text from PDF
+        extracted_text = classify_model.extract_text_from_pdf(file_path)
+
+        # Classify document type
+        document_type = classify_model.classify_document(file_path)
+
+        # Predict clauses
+        clauses = clause_model.predict_clauses(extracted_text)
+
+        # Construct response
+        response = {
+            'text': extracted_text,
+            'document_type': document_type,
+            'clauses': clauses
+        }
+        return jsonify(response), 200
+
+if __name__ == '__main__':
+    app.run(debug=True)
+2. ML Models Integration (classify_model.py and clause_model.py)
+Ensure both classify_model.py and clause_model.py contain the respective model training and prediction functions, similar to the provided snippets. They should be able to load models and perform predictions based on the input PDF.
+
+Frontend (Angular)
+1. Service to Interact with Backend (document.service.ts)
+Create a service in Angular to handle HTTP requests to the Flask backend.
+
 typescript
 Copy code
+// document.service.ts
+
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, BehaviorSubject } from 'rxjs';
-
-export interface Paragraph {
-  text: string;
-  section: string;
-  clause: string;
-  sub_section: string | null;
-}
+import { Observable } from 'rxjs';
 
 @Injectable({
   providedIn: 'root'
 })
 export class DocumentService {
-  private docTypeSubject = new BehaviorSubject<string | null>(null);
-  docType$ = this.docTypeSubject.asObservable();
+  private baseUrl = 'http://localhost:5000';  // Update with your Flask server address
 
-  private paragraphsSubject = new BehaviorSubject<Paragraph[]>([]);
-  paragraphs$ = this.paragraphsSubject.asObservable();
+  constructor(private http: HttpClient) { }
 
-  constructor(private http: HttpClient) {}
-
-  uploadDocument(file: File): void {
-    const formData = new FormData();
+  uploadPDF(file: File): Observable<any> {
+    const formData: FormData = new FormData();
     formData.append('file', file, file.name);
-
-    this.http.post<any>('http://localhost:5000/upload-pdf', formData).subscribe(response => {
-      const docType = response.doc_type;
-      const text = response.text;
-      const clauses = response.clauses;
-
-      this.docTypeSubject.next(docType);
-
-      const paragraphs: Paragraph[] = text.split(/\n/).map((paragraph, index) => {
-        const clause = clauses[index] || {};
-        return {
-          text: paragraph,
-          section: clause.section || '',
-          clause: clause.clause || '',
-          sub_section: clause.sub_section || null
-        };
-      });
-
-      this.paragraphsSubject.next(paragraphs);
-    });
+    return this.http.post<any>(`${this.baseUrl}/upload-pdf`, formData);
   }
 }
-2. app.component.html
-html
-Copy code
-<div class="container">
-  <app-pdf-uploader></app-pdf-uploader>
-  <app-doc-type-display></app-doc-type-display>
-  <app-extracted-text></app-extracted-text>
-</div>
-3. pdf-uploader.component.ts
+2. Component for Upload and Display (upload-pdf.component.ts)
+Angular component to handle PDF upload, display extracted text, and implement clause prediction.
+
 typescript
 Copy code
+// upload-pdf.component.ts
+
 import { Component } from '@angular/core';
-import { DocumentService } from '../document.service';
+import { DocumentService } from './document.service';
 
 @Component({
-  selector: 'app-pdf-uploader',
-  templateUrl: './pdf-uploader.component.html',
-  styleUrls: ['./pdf-uploader.component.css']
+  selector: 'app-upload-pdf',
+  templateUrl: './upload-pdf.component.html',
+  styleUrls: ['./upload-pdf.component.css']
 })
-export class PdfUploaderComponent {
-  constructor(private documentService: DocumentService) {}
+export class UploadPdfComponent {
+  selectedFile: File | undefined;
+  extractedText: string | undefined;
+  documentType: string | undefined;
+  clauses: any[] = [];
+
+  constructor(private documentService: DocumentService) { }
 
   onFileSelected(event: any): void {
-    const file: File = event.target.files[0];
-    if (file) {
-      this.documentService.uploadDocument(file);
+    this.selectedFile = event.target.files[0];
+  }
+
+  uploadPDF(): void {
+    if (this.selectedFile) {
+      this.documentService.uploadPDF(this.selectedFile).subscribe(
+        response => {
+          this.extractedText = response.text;
+          this.documentType = response.document_type;
+          this.clauses = response.clauses;
+        },
+        error => {
+          console.error('Error uploading PDF:', error);
+        }
+      );
     }
   }
-}
-4. pdf-uploader.component.html
-html
-Copy code
-<div class="upload-container">
-  <input type="file" (change)="onFileSelected($event)" />
-</div>
-5. doc-type-display.component.ts
-typescript
-Copy code
-import { Component, OnInit } from '@angular/core';
-import { DocumentService } from '../document.service';
 
-@Component({
-  selector: 'app-doc-type-display',
-  templateUrl: './doc-type-display.component.html',
-  styleUrls: ['./doc-type-display.component.css']
-})
-export class DocTypeDisplayComponent implements OnInit {
-  docType: string | null = null;
-
-  constructor(private documentService: DocumentService) {}
-
-  ngOnInit(): void {
-    this.documentService.docType$.subscribe(docType => {
-      this.docType = docType;
-    });
+  predictParagraph(paragraph: string): void {
+    // Implement this if needed for individual paragraph prediction
+    console.log('Predicting for paragraph:', paragraph);
   }
 }
-6. doc-type-display.component.html
+3. HTML Template (upload-pdf.component.html)
+Angular template to display PDF upload interface, extracted text, and predicted clauses.
+
 html
 Copy code
-<div *ngIf="docType" class="doc-type-display">
-  Document Type: {{ docType }}
-</div>
-7. extracted-text.component.ts
-typescript
-Copy code
-import { Component, OnInit } from '@angular/core';
-import { DocumentService, Paragraph } from '../document.service';
+<!-- upload-pdf.component.html -->
 
-@Component({
-  selector: 'app-extracted-text',
-  templateUrl: './extracted-text.component.html',
-  styleUrls: ['./extracted-text.component.css']
-})
-export class ExtractedTextComponent implements OnInit {
-  paragraphs: Paragraph[] = [];
+<input type="file" (change)="onFileSelected($event)">
+<button (click)="uploadPDF()">Upload PDF</button>
 
-  constructor(private documentService: DocumentService) {}
-
-  ngOnInit(): void {
-    this.documentService.paragraphs$.subscribe(paragraphs => {
-      this.paragraphs = paragraphs;
-    });
-  }
-}
-8. extracted-text.component.html
-html
-Copy code
-<div *ngFor="let paragraph of paragraphs" class="paragraph-container">
-  <p>{{ paragraph.text }}</p>
-  <div *ngIf="paragraph.section || paragraph.clause || paragraph.sub_section" class="prediction-container">
-    <p *ngIf="paragraph.section">Section: {{ paragraph.section }}</p>
-    <p *ngIf="paragraph.clause">Clause: {{ paragraph.clause }}</p>
-    <p *ngIf="paragraph.sub_section">Sub-Section: {{ paragraph.sub_section }}</p>
+<div *ngIf="extractedText">
+  <h3>Document Type: {{ documentType }}</h3>
+  <div *ngFor="let paragraph of extractedText.split('\n\n')">
+    <p (click)="predictParagraph(paragraph)">{{ paragraph }}</p>
+    <div *ngIf="clauses.length > 0 && clauses[0].text === paragraph">
+      <p><strong>Section:</strong> {{ clauses[0].section }}</p>
+      <p><strong>Clause:</strong> {{ clauses[0].clause }}</p>
+      <p><strong>Sub-section:</strong> {{ clauses[0].sub_section }}</p>
+    </div>
   </div>
 </div>
-Additional Adjustments
-Ensure you have defined the necessary CSS classes in your component stylesheets for better presentation.
-
-CommonModule Import
-Make sure to import CommonModule in your module file if you're using *ngIf and other Angular directives.
-
-AppModule
-app.module.ts
-typescript
-Copy code
-import { BrowserModule } from '@angular/platform-browser';
-import { NgModule } from '@angular/core';
-import { HttpClientModule } from '@angular/common/http';
-
-import { AppComponent } from './app.component';
-import { PdfUploaderComponent } from './pdf-uploader/pdf-uploader.component';
-import { DocTypeDisplayComponent } from './doc-type-display/doc-type-display.component';
-import { ExtractedTextComponent } from './extracted-text/extracted-text.component';
-
-@NgModule({
-  declarations: [
-    AppComponent,
-    PdfUploaderComponent,
-    DocTypeDisplayComponent,
-    ExtractedTextComponent
-  ],
-  imports: [
-    BrowserModule,
-    HttpClientModule
-  ],
-  providers: [],
-  bootstrap: [AppComponent]
-})
-export class AppModule { }
-This code completes the implementation of your Angular frontend, ensuring it matches your requirement to handle the paragraph splitting based on your specific condition. Ensure the backend API is correctly set up to handle the file upload and provide the required response format.
-
-
-
-
-
-
