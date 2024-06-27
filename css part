@@ -1,208 +1,47 @@
-app.py
-python
-Copy code
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from classify_model import classify_document, extract_text_from_pdf
-from clause_model import predict_clauses
+ App Component (app.component.html)
+Update the app.component.html to include navigation and render the child components.
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
-
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"})
-    file = request.files['file']
-    file.save(file.filename)  # Save the uploaded file
-    return jsonify({"message": "File uploaded successfully"})
-
-@app.route('/classify', methods=['POST'])
-def classify_pdf():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"})
-    file = request.files['file']
-    document_type = classify_document(file.filename)
-    return jsonify({"document_type": document_type})
-
-@app.route('/predict_clauses', methods=['POST'])
-def predict_pdf_clauses():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"})
-    file = request.files['file']
-    text = extract_text_from_pdf(file.filename)
-    clauses = predict_clauses(text)
-    return jsonify({"clauses": clauses})
-
-if __name__ == '__main__':
-    app.run(debug=True)
-Frontend (Angular)
-1. Service (document.service.ts)
-Create a service to handle HTTP requests to your Flask backend.
-
-typescript
-Copy code
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-
-@Injectable({
-  providedIn: 'root'
-})
-export class DocumentService {
-
-  private baseUrl = 'http://localhost:5000';
-
-  constructor(private http: HttpClient) { }
-
-  uploadPdf(file: File) {
-    const formData = new FormData();
-    formData.append('file', file);
-    return this.http.post<any>(`${this.baseUrl}/upload`, formData);
-  }
-
-  classifyPdf(file: File) {
-    const formData = new FormData();
-    formData.append('file', file);
-    return this.http.post<any>(`${this.baseUrl}/classify`, formData);
-  }
-
-  predictClauses(file: File) {
-    const formData = new FormData();
-    formData.append('file', file);
-    return this.http.post<any>(`${this.baseUrl}/predict_clauses`, formData);
-  }
-}
-2. Components
-pdf-upload.component.ts
-typescript
-Copy code
-import { Component } from '@angular/core';
-import { DocumentService } from '../document.service';
-
-@Component({
-  selector: 'app-pdf-upload',
-  templateUrl: './pdf-upload.component.html',
-  styleUrls: ['./pdf-upload.component.css']
-})
-export class PdfUploadComponent {
-
-  constructor(private documentService: DocumentService) {}
-
-  onFileSelected(event: any) {
-    const file: File = event.target.files[0];
-    this.documentService.uploadPdf(file).subscribe(
-      (response) => {
-        console.log(response);  // Handle success response
-      },
-      (error) => {
-        console.error(error);  // Handle error response
-      }
-    );
-  }
-}
-pdf-upload.component.html
 html
 Copy code
-<div>
-  <h2>Upload PDF File</h2>
-  <input type="file" (change)="onFileSelected($event)">
+<div style="text-align:center">
+  <h1>
+    Document Analysis App
+  </h1>
 </div>
-document-type.component.ts
+<nav>
+  <ul>
+    <li><a routerLink="/upload">Upload PDF</a></li>
+    <li><a routerLink="/classify">Classify Document</a></li>
+    <li><a routerLink="/predict">Predict Clauses</a></li>
+  </ul>
+</nav>
+<router-outlet></router-outlet>
+5. Routing (app-routing.module.ts)
+Set up routing to navigate between components.
+
 typescript
 Copy code
-import { Component } from '@angular/core';
-import { DocumentService } from '../document.service';
+import { NgModule } from '@angular/core';
+import { RouterModule, Routes } from '@angular/router';
+import { PdfUploadComponent } from './pdf-upload/pdf-upload.component';
+import { DocumentTypeComponent } from './document-type/document-type.component';
+import { ClausePredictionComponent } from './clause-prediction/clause-prediction.component';
 
-@Component({
-  selector: 'app-document-type',
-  templateUrl: './document-type.component.html',
-  styleUrls: ['./document-type.component.css']
+const routes: Routes = [
+  { path: 'upload', component: PdfUploadComponent },
+  { path: 'classify', component: DocumentTypeComponent },
+  { path: 'predict', component: ClausePredictionComponent },
+  { path: '', redirectTo: '/upload', pathMatch: 'full' }
+];
+
+@NgModule({
+  imports: [RouterModule.forRoot(routes)],
+  exports: [RouterModule]
 })
-export class DocumentTypeComponent {
+export class AppRoutingModule { }
+6. AppModule (app.module.ts)
+Ensure AppRoutingModule is imported and used in AppModule.
 
-  documentType: string | undefined;
-  fileToClassify: File | undefined;
-
-  constructor(private documentService: DocumentService) {}
-
-  classifyPdf() {
-    if (this.fileToClassify) {
-      this.documentService.classifyPdf(this.fileToClassify).subscribe(
-        (response) => {
-          this.documentType = response.document_type;  // Update UI with document type
-        },
-        (error) => {
-          console.error(error);  // Handle error response
-        }
-      );
-    }
-  }
-
-  onFileSelected(event: any) {
-    this.fileToClassify = event.target.files[0];
-  }
-}
-document-type.component.html
-html
-Copy code
-<div>
-  <h2>Document Type Prediction</h2>
-  <input type="file" (change)="onFileSelected($event)">
-  <button (click)="classifyPdf()">Predict Document Type</button>
-  <p *ngIf="documentType">Predicted Document Type: {{ documentType }}</p>
-</div>
-clause-prediction.component.ts
-typescript
-Copy code
-import { Component } from '@angular/core';
-import { DocumentService } from '../document.service';
-
-@Component({
-  selector: 'app-clause-prediction',
-  templateUrl: './clause-prediction.component.html',
-  styleUrls: ['./clause-prediction.component.css']
-})
-export class ClausePredictionComponent {
-
-  clauses: any[] = [];
-  fileToPredict: File | undefined;
-
-  constructor(private documentService: DocumentService) {}
-
-  predictClauses() {
-    if (this.fileToPredict) {
-      this.documentService.predictClauses(this.fileToPredict).subscribe(
-        (response) => {
-          this.clauses = response.clauses;  // Update UI with predicted clauses
-        },
-        (error) => {
-          console.error(error);  // Handle error response
-        }
-      );
-    }
-  }
-
-  onFileSelected(event: any) {
-    this.fileToPredict = event.target.files[0];
-  }
-}
-clause-prediction.component.html
-html
-Copy code
-<div>
-  <h2>Clause Prediction</h2>
-  <input type="file" (change)="onFileSelected($event)">
-  <button (click)="predictClauses()">Predict Clauses</button>
-  <div *ngFor="let clause of clauses">
-    <p>{{ clause.text }}</p>
-    <ul>
-      <li>Section: {{ clause.section }}</li>
-      <li>Clause: {{ clause.clause }}</li>
-      <li *ngIf="clause.sub_section">Sub-clause: {{ clause.sub_section }}</li>
-    </ul>
-  </div>
-</div>
-3. App Module (app.module.ts)
 typescript
 Copy code
 import { NgModule } from '@angular/core';
@@ -214,6 +53,7 @@ import { PdfUploadComponent } from './pdf-upload/pdf-upload.component';
 import { DocumentTypeComponent } from './document-type/document-type.component';
 import { ClausePredictionComponent } from './clause-prediction/clause-prediction.component';
 import { DocumentService } from './document.service';
+import { AppRoutingModule } from './app-routing.module';
 
 @NgModule({
   declarations: [
@@ -224,9 +64,37 @@ import { DocumentService } from './document.service';
   ],
   imports: [
     BrowserModule,
-    HttpClientModule
+    HttpClientModule,
+    AppRoutingModule  // Import routing module
   ],
   providers: [DocumentService],  // Provide DocumentService
   bootstrap: [AppComponent]
 })
 export class AppModule { }
+---------------
+ng generate module app-routing --flat --module=app
+------------------
+import { Component } from '@angular/core';
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.css']
+})
+export class AppComponent {
+  title = 'document-analysis-app';  // Replace with your application title if needed
+}
+---------
+<div style="text-align:center">
+  <h1>
+    {{ title }}
+  </h1>
+</div>
+<nav>
+  <ul>
+    <li><a routerLink="/upload">Upload PDF</a></li>
+    <li><a routerLink="/classify">Classify Document</a></li>
+    <li><a routerLink="/predict">Predict Clauses</a></li>
+  </ul>
+</nav>
+<router-outlet></router-outlet>
