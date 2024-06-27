@@ -8,45 +8,47 @@ import { HttpClient } from '@angular/common/http';
 })
 export class ClausePredictionComponent implements OnInit {
   predictions: any[] = [];
+  selectedFile: File | null = null;
 
   constructor(private http: HttpClient) { }
 
   ngOnInit(): void {
-    // Fetch predictions from backend
-    this.http.get<any[]>('http://localhost:5000/predict-clauses').subscribe(
-      (data) => {
-        this.predictions = data;
-      },
-      (error) => {
-        console.log('Error fetching predictions:', error);
-      }
-    );
+    // Initialization logic if needed
   }
 
-  // Function to display predictions for a paragraph
-  displayPredictions(index: number) {
+  onFileSelected(event: any): void {
+    this.selectedFile = event.target.files[0];
+  }
+
+  predictClauses(): void {
+    if (this.selectedFile) {
+      const formData = new FormData();
+      formData.append('file', this.selectedFile, this.selectedFile.name);
+
+      this.http.post<any[]>('http://localhost:5000/predict-clauses', formData).subscribe(
+        (data) => {
+          this.predictions = data;
+        },
+        (error) => {
+          console.log('Error predicting clauses:', error);
+        }
+      );
+    }
+  }
+
+  displayPredictions(index: number): void {
     const prediction = this.predictions[index];
     alert(`Section: ${prediction.section}, Clause: ${prediction.clause}, Sub-clause: ${prediction.subSection}`);
   }
 }
------------
-<div style="text-align:center">
-  <h1>
-    Document Analysis App
-  </h1>
+---------
+<div>
+  <input type="file" (change)="onFileSelected($event)">
+  <button (click)="predictClauses()">Predict Clauses</button>
 </div>
 
-<div>
-  <!-- Upload Document Component -->
-  <app-pdf-upload></app-pdf-upload>
-</div>
-
-<div>
-  <!-- Classify Document Component -->
-  <app-document-type></app-document-type>
-</div>
-
-<div>
-  <!-- Clause Prediction Component -->
-  <app-clause-prediction></app-clause-prediction>
+<div *ngFor="let prediction of predictions; let i = index">
+  <div (click)="displayPredictions(i)">
+    {{ prediction.text }}
+  </div>
 </div>
