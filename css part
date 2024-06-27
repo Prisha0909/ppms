@@ -1,100 +1,52 @@
- App Component (app.component.html)
-Update the app.component.html to include navigation and render the child components.
+import { Component, OnInit } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 
-html
-Copy code
+@Component({
+  selector: 'app-clause-prediction',
+  templateUrl: './clause-prediction.component.html',
+  styleUrls: ['./clause-prediction.component.css']
+})
+export class ClausePredictionComponent implements OnInit {
+  predictions: any[] = [];
+
+  constructor(private http: HttpClient) { }
+
+  ngOnInit(): void {
+    // Fetch predictions from backend
+    this.http.get<any[]>('http://localhost:5000/predict-clauses').subscribe(
+      (data) => {
+        this.predictions = data;
+      },
+      (error) => {
+        console.log('Error fetching predictions:', error);
+      }
+    );
+  }
+
+  // Function to display predictions for a paragraph
+  displayPredictions(index: number) {
+    const prediction = this.predictions[index];
+    alert(`Section: ${prediction.section}, Clause: ${prediction.clause}, Sub-clause: ${prediction.subSection}`);
+  }
+}
+-----------
 <div style="text-align:center">
   <h1>
     Document Analysis App
   </h1>
 </div>
-<nav>
-  <ul>
-    <li><a routerLink="/upload">Upload PDF</a></li>
-    <li><a routerLink="/classify">Classify Document</a></li>
-    <li><a routerLink="/predict">Predict Clauses</a></li>
-  </ul>
-</nav>
-<router-outlet></router-outlet>
-5. Routing (app-routing.module.ts)
-Set up routing to navigate between components.
 
-typescript
-Copy code
-import { NgModule } from '@angular/core';
-import { RouterModule, Routes } from '@angular/router';
-import { PdfUploadComponent } from './pdf-upload/pdf-upload.component';
-import { DocumentTypeComponent } from './document-type/document-type.component';
-import { ClausePredictionComponent } from './clause-prediction/clause-prediction.component';
-
-const routes: Routes = [
-  { path: 'upload', component: PdfUploadComponent },
-  { path: 'classify', component: DocumentTypeComponent },
-  { path: 'predict', component: ClausePredictionComponent },
-  { path: '', redirectTo: '/upload', pathMatch: 'full' }
-];
-
-@NgModule({
-  imports: [RouterModule.forRoot(routes)],
-  exports: [RouterModule]
-})
-export class AppRoutingModule { }
-6. AppModule (app.module.ts)
-Ensure AppRoutingModule is imported and used in AppModule.
-
-typescript
-Copy code
-import { NgModule } from '@angular/core';
-import { BrowserModule } from '@angular/platform-browser';
-import { HttpClientModule } from '@angular/common/http';
-
-import { AppComponent } from './app.component';
-import { PdfUploadComponent } from './pdf-upload/pdf-upload.component';
-import { DocumentTypeComponent } from './document-type/document-type.component';
-import { ClausePredictionComponent } from './clause-prediction/clause-prediction.component';
-import { DocumentService } from './document.service';
-import { AppRoutingModule } from './app-routing.module';
-
-@NgModule({
-  declarations: [
-    AppComponent,
-    PdfUploadComponent,
-    DocumentTypeComponent,
-    ClausePredictionComponent
-  ],
-  imports: [
-    BrowserModule,
-    HttpClientModule,
-    AppRoutingModule  // Import routing module
-  ],
-  providers: [DocumentService],  // Provide DocumentService
-  bootstrap: [AppComponent]
-})
-export class AppModule { }
----------------
-ng generate module app-routing --flat --module=app
-------------------
-import { Component } from '@angular/core';
-
-@Component({
-  selector: 'app-root',
-  templateUrl: './app.component.html',
-  styleUrls: ['./app.component.css']
-})
-export class AppComponent {
-  title = 'document-analysis-app';  // Replace with your application title if needed
-}
----------
-<div style="text-align:center">
-  <h1>
-    {{ title }}
-  </h1>
+<div>
+  <!-- Upload Document Component -->
+  <app-pdf-upload></app-pdf-upload>
 </div>
-<nav>
-  <ul>
-    <li><a routerLink="/upload">Upload PDF</a></li>
-    <li><a routerLink="/classify">Classify Document</a></li>
-    <li><a routerLink="/predict">Predict Clauses</a></li>
-  </ul>
-</nav>
-<router-outlet></router-outlet>
+
+<div>
+  <!-- Classify Document Component -->
+  <app-document-type></app-document-type>
+</div>
+
+<div>
+  <!-- Clause Prediction Component -->
+  <app-clause-prediction></app-clause-prediction>
+</div>
