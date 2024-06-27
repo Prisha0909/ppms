@@ -1,251 +1,232 @@
-app.py (Flask Backend)
+app.py
 python
 Copy code
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import os
-from classify_model import classify_document
+from classify_model import classify_document, extract_text_from_pdf
 from clause_model import predict_clauses
 
 app = Flask(__name__)
-CORS(app)
-
-UPLOAD_FOLDER = 'uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+CORS(app)  # Enable CORS for all routes
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
-    
+        return jsonify({"error": "No file part"})
     file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    
-    if file:
-        file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        file.save(file_path)
-        doc_type, extracted_text = classify_document(file_path)
-        paragraphs = extracted_text.split('\n\n')  # Assuming paragraphs are separated by double newlines
-        return jsonify({"docType": doc_type, "extractedText": paragraphs})
-    return jsonify({"error": "File upload failed"}), 500
+    file.save(file.filename)  # Save the uploaded file
+    return jsonify({"message": "File uploaded successfully"})
 
-@app.route('/predict', methods=['POST'])
-def predict():
-    data = request.json
-    if not data or 'text' not in data:
-        return jsonify({"error": "Invalid input"}), 400
+@app.route('/classify', methods=['POST'])
+def classify_pdf():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"})
+    file = request.files['file']
+    document_type = classify_document(file.filename)
+    return jsonify({"document_type": document_type})
 
-    text = data['text']
-    predictions = predict_clauses(text)
-    if predictions:
-        return jsonify(predictions[0])  # Return the first prediction for simplicity
-    return jsonify({"error": "Prediction failed"}), 500
+@app.route('/predict_clauses', methods=['POST'])
+def predict_pdf_clauses():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"})
+    file = request.files['file']
+    text = extract_text_from_pdf(file.filename)
+    clauses = predict_clauses(text)
+    return jsonify({"clauses": clauses})
 
 if __name__ == '__main__':
     app.run(debug=True)
-Frontend Code
-app.component.html
-html
-Copy code
-<div style="text-align:center">
-  <h1>
-    Welcome to Document Classifier App
-  </h1>
-</div>
-<hr>
-<div style="display: flex; justify-content: center;">
-  <div style="width: 60%;">
-    <app-upload-pdf (pdfUploaded)="onPdfUploaded($event)"></app-upload-pdf>
-    <br>
-    <app-document-type-display [docType]="documentType"></app-document-type-display>
-    <br>
-    <app-extracted-text [extractedText]="extractedText"></app-extracted-text>
-  </div>
-</div>
-app.component.ts
-typescript
-Copy code
-import { Component } from '@angular/core';
-import { DocumentService } from './document.service';
+Frontend (Angular)
+1. Service (document.service.ts)
+Create a service to handle HTTP requests to your Flask backend.
 
-@Component({
-  selector: 'app-root',
-  templateUrl: './app.component.html',
-  styleUrls: ['./app.component.css']
-})
-export class AppComponent {
-
-  documentType: string | undefined;
-  extractedText: { text: string, predictions?: { section: string, clause: string, sub_section: string } }[] = [];
-
-  constructor(private documentService: DocumentService) {}
-
-  onPdfUploaded(event: any) {
-    this.documentType = event.docType;
-    this.extractedText = event.extractedText.map((text: string) => {
-      return { text };
-    });
-  }
-
-}
-upload-pdf.component.html
-html
-Copy code
-<div>
-  <input type="file" (change)="onFileSelected($event)">
-</div>
-upload-pdf.component.ts
-typescript
-Copy code
-import { Component, EventEmitter, Output } from '@angular/core';
-import { DocumentService } from '../document.service';
-
-@Component({
-  selector: 'app-upload-pdf',
-  templateUrl: './upload-pdf.component.html',
-  styleUrls: ['./upload-pdf.component.css']
-})
-export class UploadPdfComponent {
-
-  @Output() pdfUploaded = new EventEmitter<{ docType: string, extractedText: string[] }>();
-
-  constructor(private documentService: DocumentService) {}
-
-  onFileSelected(event: any) {
-    const file = event.target.files[0];
-    if (file) {
-      this.documentService.uploadDocument(file).subscribe(
-        (response) => {
-          this.pdfUploaded.emit(response);
-        },
-        (error) => {
-          console.error('Error uploading file: ', error);
-        }
-      );
-    }
-  }
-
-}
-document-type-display.component.html
-html
-Copy code
-<div *ngIf="docType">
-  <h3>Document Type: {{ docType }}</h3>
-</div>
-document-type-display.component.ts
-typescript
-Copy code
-import { Component, Input } from '@angular/core';
-
-@Component({
-  selector: 'app-document-type-display',
-  templateUrl: './document-type-display.component.html',
-  styleUrls: ['./document-type-display.component.css']
-})
-export class DocumentTypeDisplayComponent {
-
-  @Input() docType: string | undefined;
-
-  constructor() {}
-
-}
-extracted-text.component.html
-html
-Copy code
-<div *ngFor="let item of extractedText">
-  <div>
-    <p (click)="onTextClick(item.text)">{{ item.text }}</p>
-    <div *ngIf="item.predictions">
-      <p><strong>Section:</strong> {{ item.predictions.section }}</p>
-      <p><strong>Clause:</strong> {{ item.predictions.clause }}</p>
-      <p><strong>Sub-section:</strong> {{ item.predictions.sub_section }}</p>
-    </div>
-  </div>
-</div>
-extracted-text.component.ts
-typescript
-Copy code
-import { Component, Input } from '@angular/core';
-import { DocumentService } from '../document.service';
-
-@Component({
-  selector: 'app-extracted-text',
-  templateUrl: './extracted-text.component.html',
-  styleUrls: ['./extracted-text.component.css']
-})
-export class ExtractedTextComponent {
-
-  @Input() extractedText: { text: string, predictions?: { section: string, clause: string, sub_section: string } }[] = [];
-
-  constructor(private documentService: DocumentService) {}
-
-  onTextClick(text: string) {
-    this.documentService.predictClauses(text).subscribe(
-      (predictions) => {
-        const index = this.extractedText.findIndex(item => item.text === text);
-        if (index !== -1) {
-          this.extractedText[index].predictions = predictions;
-        }
-      },
-      (error) => {
-        console.error('Error predicting clauses: ', error);
-      }
-    );
-  }
-
-}
-document.service.ts
 typescript
 Copy code
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
 
 @Injectable({
   providedIn: 'root'
 })
 export class DocumentService {
 
-  private apiUrl = 'http://localhost:5000'; // Replace with your backend API URL
+  private baseUrl = 'http://localhost:5000';
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) { }
 
-  uploadDocument(file: File): Observable<{ docType: string, extractedText: string[] }> {
+  uploadPdf(file: File) {
     const formData = new FormData();
     formData.append('file', file);
-    return this.http.post<{ docType: string, extractedText: string[] }>(`${this.apiUrl}/upload`, formData);
+    return this.http.post<any>(`${this.baseUrl}/upload`, formData);
   }
 
-  predictClauses(text: string): Observable<{ section: string, clause: string, sub_section: string }> {
-    return this.http.post<{ section: string, clause: string, sub_section: string }>(`${this.apiUrl}/predict`, { text });
+  classifyPdf(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<any>(`${this.baseUrl}/classify`, formData);
   }
 
+  predictClauses(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<any>(`${this.baseUrl}/predict_clauses`, formData);
+  }
 }
-app.module.ts
+2. Components
+pdf-upload.component.ts
 typescript
 Copy code
-import { BrowserModule } from '@angular/platform-browser';
+import { Component } from '@angular/core';
+import { DocumentService } from '../document.service';
+
+@Component({
+  selector: 'app-pdf-upload',
+  templateUrl: './pdf-upload.component.html',
+  styleUrls: ['./pdf-upload.component.css']
+})
+export class PdfUploadComponent {
+
+  constructor(private documentService: DocumentService) {}
+
+  onFileSelected(event: any) {
+    const file: File = event.target.files[0];
+    this.documentService.uploadPdf(file).subscribe(
+      (response) => {
+        console.log(response);  // Handle success response
+      },
+      (error) => {
+        console.error(error);  // Handle error response
+      }
+    );
+  }
+}
+pdf-upload.component.html
+html
+Copy code
+<div>
+  <h2>Upload PDF File</h2>
+  <input type="file" (change)="onFileSelected($event)">
+</div>
+document-type.component.ts
+typescript
+Copy code
+import { Component } from '@angular/core';
+import { DocumentService } from '../document.service';
+
+@Component({
+  selector: 'app-document-type',
+  templateUrl: './document-type.component.html',
+  styleUrls: ['./document-type.component.css']
+})
+export class DocumentTypeComponent {
+
+  documentType: string | undefined;
+  fileToClassify: File | undefined;
+
+  constructor(private documentService: DocumentService) {}
+
+  classifyPdf() {
+    if (this.fileToClassify) {
+      this.documentService.classifyPdf(this.fileToClassify).subscribe(
+        (response) => {
+          this.documentType = response.document_type;  // Update UI with document type
+        },
+        (error) => {
+          console.error(error);  // Handle error response
+        }
+      );
+    }
+  }
+
+  onFileSelected(event: any) {
+    this.fileToClassify = event.target.files[0];
+  }
+}
+document-type.component.html
+html
+Copy code
+<div>
+  <h2>Document Type Prediction</h2>
+  <input type="file" (change)="onFileSelected($event)">
+  <button (click)="classifyPdf()">Predict Document Type</button>
+  <p *ngIf="documentType">Predicted Document Type: {{ documentType }}</p>
+</div>
+clause-prediction.component.ts
+typescript
+Copy code
+import { Component } from '@angular/core';
+import { DocumentService } from '../document.service';
+
+@Component({
+  selector: 'app-clause-prediction',
+  templateUrl: './clause-prediction.component.html',
+  styleUrls: ['./clause-prediction.component.css']
+})
+export class ClausePredictionComponent {
+
+  clauses: any[] = [];
+  fileToPredict: File | undefined;
+
+  constructor(private documentService: DocumentService) {}
+
+  predictClauses() {
+    if (this.fileToPredict) {
+      this.documentService.predictClauses(this.fileToPredict).subscribe(
+        (response) => {
+          this.clauses = response.clauses;  // Update UI with predicted clauses
+        },
+        (error) => {
+          console.error(error);  // Handle error response
+        }
+      );
+    }
+  }
+
+  onFileSelected(event: any) {
+    this.fileToPredict = event.target.files[0];
+  }
+}
+clause-prediction.component.html
+html
+Copy code
+<div>
+  <h2>Clause Prediction</h2>
+  <input type="file" (change)="onFileSelected($event)">
+  <button (click)="predictClauses()">Predict Clauses</button>
+  <div *ngFor="let clause of clauses">
+    <p>{{ clause.text }}</p>
+    <ul>
+      <li>Section: {{ clause.section }}</li>
+      <li>Clause: {{ clause.clause }}</li>
+      <li *ngIf="clause.sub_section">Sub-clause: {{ clause.sub_section }}</li>
+    </ul>
+  </div>
+</div>
+3. App Module (app.module.ts)
+typescript
+Copy code
 import { NgModule } from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
 import { HttpClientModule } from '@angular/common/http';
 
 import { AppComponent } from './app.component';
-import { UploadPdfComponent } from './upload-pdf/upload-pdf.component';
-import { DocumentTypeDisplayComponent } from './document-type-display/document-type-display.component';
-import { ExtractedTextComponent } from './extracted-text/extracted-text.component';
+import { PdfUploadComponent } from './pdf-upload/pdf-upload.component';
+import { DocumentTypeComponent } from './document-type/document-type.component';
+import { ClausePredictionComponent } from './clause-prediction/clause-prediction.component';
+import { DocumentService } from './document.service';
 
 @NgModule({
   declarations: [
     AppComponent,
-    UploadPdfComponent,
-    DocumentTypeDisplayComponent,
-    ExtractedTextComponent
+    PdfUploadComponent,
+    DocumentTypeComponent,
+    ClausePredictionComponent
   ],
   imports: [
     BrowserModule,
     HttpClientModule
   ],
-  providers: [],
+  providers: [DocumentService],  // Provide DocumentService
   bootstrap: [AppComponent]
 })
 export class AppModule { }
