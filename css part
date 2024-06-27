@@ -1,3 +1,50 @@
+app.py (Flask Backend)
+python
+Copy code
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import os
+from classify_model import classify_document
+from clause_model import predict_clauses
+
+app = Flask(__name__)
+CORS(app)
+
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+    
+    if file:
+        file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(file_path)
+        doc_type, extracted_text = classify_document(file_path)
+        paragraphs = extracted_text.split('\n\n')  # Assuming paragraphs are separated by double newlines
+        return jsonify({"docType": doc_type, "extractedText": paragraphs})
+    return jsonify({"error": "File upload failed"}), 500
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    data = request.json
+    if not data or 'text' not in data:
+        return jsonify({"error": "Invalid input"}), 400
+
+    text = data['text']
+    predictions = predict_clauses(text)
+    if predictions:
+        return jsonify(predictions[0])  # Return the first prediction for simplicity
+    return jsonify({"error": "Prediction failed"}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
+Frontend Code
 app.component.html
 html
 Copy code
