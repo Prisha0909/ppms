@@ -1,54 +1,160 @@
-import { Component, OnInit } from '@angular/core';
+app.component.ts
+typescript
+Copy code
+import { Component } from '@angular/core';
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.css']
+})
+export class AppComponent {
+  title = 'Document Processing';
+}
+app.component.html
+html
+Copy code
+<router-outlet></router-outlet>
+app.component.css
+This can be left empty or you can add any global styles you prefer.
+
+css
+Copy code
+/* You can add global styles here */
+document-processing.component.ts
+typescript
+Copy code
+import { Component } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 
 @Component({
-  selector: 'app-clause-prediction',
-  templateUrl: './clause-prediction.component.html',
-  styleUrls: ['./clause-prediction.component.css']
+  selector: 'app-document-processing',
+  templateUrl: './document-processing.component.html',
+  styleUrls: ['./document-processing.component.css']
 })
-export class ClausePredictionComponent implements OnInit {
-  predictions: any[] = [];
+export class DocumentProcessingComponent {
+  documentType: string | null = null;
+  paragraphs: any[] = [];
   selectedFile: File | null = null;
 
   constructor(private http: HttpClient) { }
-
-  ngOnInit(): void {
-    // Initialization logic if needed
-  }
 
   onFileSelected(event: any): void {
     this.selectedFile = event.target.files[0];
   }
 
-  predictClauses(): void {
+  uploadAndProcessFile(): void {
     if (this.selectedFile) {
       const formData = new FormData();
       formData.append('file', this.selectedFile, this.selectedFile.name);
 
-      this.http.post<any[]>('http://localhost:5000/predict-clauses', formData).subscribe(
+      // Step 1: Classify the document type
+      this.http.post<{ document_type: string }>('http://localhost:5000/classify-document', formData).subscribe(
         (data) => {
-          this.predictions = data;
+          this.documentType = data.document_type;
+
+          // Step 2: Predict clauses for each paragraph
+          this.http.post<any[]>('http://localhost:5000/predict-clauses', formData).subscribe(
+            (clauses) => {
+              this.paragraphs = clauses;
+            },
+            (error) => {
+              console.log('Error predicting clauses:', error);
+            }
+          );
         },
         (error) => {
-          console.log('Error predicting clauses:', error);
+          console.log('Error classifying document:', error);
         }
       );
     }
   }
 
-  displayPredictions(index: number): void {
-    const prediction = this.predictions[index];
-    alert(`Section: ${prediction.section}, Clause: ${prediction.clause}, Sub-clause: ${prediction.subSection}`);
+  displayPredictions(paragraph: any): void {
+    alert(`Section: ${paragraph.section}, Clause: ${paragraph.clause}, Sub-clause: ${paragraph.sub_section}`);
   }
 }
----------
+document-processing.component.html
+html
+Copy code
 <div>
   <input type="file" (change)="onFileSelected($event)">
-  <button (click)="predictClauses()">Predict Clauses</button>
+  <button (click)="uploadAndProcessFile()">Upload and Process File</button>
 </div>
 
-<div *ngFor="let prediction of predictions; let i = index">
-  <div (click)="displayPredictions(i)">
-    {{ prediction.text }}
+<div *ngIf="documentType">
+  <h3>Document Type: {{ documentType }}</h3>
+</div>
+
+<div *ngFor="let paragraph of paragraphs">
+  <div (click)="displayPredictions(paragraph)">
+    {{ paragraph.text }}
   </div>
 </div>
+document-processing.component.css
+This can be left empty or you can add any component-specific styles you prefer.
+
+css
+Copy code
+/* You can add styles specific to the document processing component here */
+app-routing.module.ts
+typescript
+Copy code
+import { NgModule } from '@angular/core';
+import { RouterModule, Routes } from '@angular/router';
+import { DocumentProcessingComponent } from './document-processing/document-processing.component';
+
+const routes: Routes = [
+  { path: '', component: DocumentProcessingComponent }
+];
+
+@NgModule({
+  imports: [RouterModule.forRoot(routes)],
+  exports: [RouterModule]
+})
+export class AppRoutingModule { }
+app.module.ts
+typescript
+Copy code
+import { BrowserModule } from '@angular/platform-browser';
+import { NgModule } from '@angular/core';
+import { HttpClientModule } from '@angular/common/http';
+import { AppRoutingModule } from './app-routing.module';
+import { AppComponent } from './app.component';
+import { DocumentProcessingComponent } from './document-processing/document-processing.component';
+
+@NgModule({
+  declarations: [
+    AppComponent,
+    DocumentProcessingComponent
+  ],
+  imports: [
+    BrowserModule,
+    AppRoutingModule,
+    HttpClientModule
+  ],
+  providers: [],
+  bootstrap: [AppComponent]
+})
+export class AppModule { }
+styles.css
+This file is for global styles in your Angular project. You can leave it empty or add any global styles.
+
+css
+Copy code
+/* You can add global styles here */
+index.html
+html
+Copy code
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Document Processing</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+  <app-root></app-root>
+</body>
+</html>
