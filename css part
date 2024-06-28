@@ -2,54 +2,30 @@ app.component.html
 html
 Copy code
 <div class="container">
-  <div class="row mt-4">
-    <div class="col-md-6">
-      <app-upload-pdf></app-upload-pdf>
-    </div>
-    <div class="col-md-6">
-      <div class="card">
-        <div class="card-header">
-          Document Type
-        </div>
-        <div class="card-body">
-          <p *ngIf="documentType">{{ documentType }}</p>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="row mt-4">
-    <div class="col-md-6">
-      <div class="card">
-        <div class="card-header">
-          Extracted Text
-        </div>
-        <div class="card-body">
-          <p *ngFor="let paragraph of extractedText">{{ paragraph }}</p>
-        </div>
-      </div>
-    </div>
-    <div class="col-md-6">
-      <app-predict-clause></app-predict-clause>
-    </div>
-  </div>
+  <h1>Document Classification and Clause Prediction</h1>
+  <app-upload-pdf></app-upload-pdf>
+  <app-predict-clause></app-predict-clause>
 </div>
 upload-pdf.component.html
 html
 Copy code
-<div class="card">
-  <div class="card-header">
-    Upload PDF
+<div class="upload-container">
+  <h2>Upload PDF</h2>
+  <input type="file" (change)="onFileSelected($event)" />
+  <button (click)="onUpload()">Upload</button>
+  <div *ngIf="documentType">
+    <h3>Document Type: {{ documentType }}</h3>
   </div>
-  <div class="card-body">
-    <input type="file" (change)="onFileChange($event)" class="form-control-file">
-    <button class="btn btn-primary mt-2" (click)="uploadPdf()">Upload PDF</button>
+  <div *ngIf="extractedText">
+    <h3>Extracted Text:</h3>
+    <p>{{ extractedText }}</p>
   </div>
 </div>
 upload-pdf.component.ts
 typescript
 Copy code
 import { Component } from '@angular/core';
-import { BackendService } from '../backend.service';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 
 @Component({
   selector: 'app-upload-pdf',
@@ -59,65 +35,51 @@ import { BackendService } from '../backend.service';
 export class UploadPdfComponent {
   selectedFile: File | null = null;
   documentType: string | null = null;
-  extractedText: string[] | null = null;
+  extractedText: string | null = null;
 
-  constructor(private backendService: BackendService) {}
+  constructor(private http: HttpClient) {}
 
-  onFileChange(event: any) {
-    this.selectedFile = event.target.files[0];
+  onFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files.length > 0) {
+      this.selectedFile = input.files[0];
+    }
   }
 
-  uploadPdf() {
-    if (!this.selectedFile) {
-      alert('Please select a file.');
-      return;
+  onUpload() {
+    if (this.selectedFile) {
+      const formData = new FormData();
+      formData.append('file', this.selectedFile);
+
+      this.http.post<any>('http://localhost:5000/upload-pdf', formData).subscribe(
+        response => {
+          this.documentType = response.document_type;
+          this.extractedText = response.extracted_text;
+        },
+        (error: HttpErrorResponse) => {
+          console.error('Error uploading file:', error.message);
+        }
+      );
     }
-
-    const formData = new FormData();
-    formData.append('file', this.selectedFile);
-
-    this.backendService.uploadPdf(formData).subscribe(
-      (response: any) => {
-        this.documentType = response.doc_type;
-        this.extractedText = response.extracted_text.split('\n\n');
-      },
-      (error) => {
-        console.error('Error uploading PDF:', error);
-      }
-    );
   }
 }
 predict-clause.component.html
 html
 Copy code
-<div class="card">
-  <div class="card-header">
-    Predict Clause
-  </div>
-  <div class="card-body">
-    <textarea class="form-control" rows="4" placeholder="Enter text to predict clauses..." [(ngModel)]="inputText"></textarea>
-    <button class="btn btn-primary mt-2" (click)="predictClause()">Predict</button>
-  </div>
-</div>
-
-<div class="card mt-4" *ngIf="predictedClauses">
-  <div class="card-header">
-    Predicted Clauses
-  </div>
-  <div class="card-body">
-    <div *ngFor="let clause of predictedClauses">
-      <p><strong>Text:</strong> {{ clause.text }}</p>
-      <p><strong>Section:</strong> {{ clause.section }}</p>
-      <p><strong>Clause:</strong> {{ clause.clause }}</p>
-      <p *ngIf="clause.sub_section"><strong>Subsection:</strong> {{ clause.sub_section }}</p>
-    </div>
+<div class="predict-container">
+  <h2>Predict Clause</h2>
+  <textarea [(ngModel)]="inputText" placeholder="Enter text here..."></textarea>
+  <button (click)="onPredict()">Predict</button>
+  <div *ngIf="clausePrediction">
+    <h3>Clause Prediction:</h3>
+    <pre>{{ clausePrediction | json }}</pre>
   </div>
 </div>
 predict-clause.component.ts
 typescript
 Copy code
 import { Component } from '@angular/core';
-import { BackendService } from '../backend.service';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 
 @Component({
   selector: 'app-predict-clause',
@@ -126,64 +88,34 @@ import { BackendService } from '../backend.service';
 })
 export class PredictClauseComponent {
   inputText: string = '';
-  predictedClauses: any[] | null = null;
+  clausePrediction: any;
 
-  constructor(private backendService: BackendService) {}
+  constructor(private http: HttpClient) {}
 
-  predictClause() {
-    if (!this.inputText.trim()) {
-      alert('Please enter text to predict clauses.');
-      return;
-    }
+  onPredict() {
+    const requestBody = { text: this.inputText };
 
-    const data = { text: this.inputText };
-
-    this.backendService.predictClause(data).subscribe(
-      (response: any) => {
-        this.predictedClauses = response.clauses;
+    this.http.post<any>('http://localhost:5000/predict-clause', requestBody).subscribe(
+      response => {
+        this.clausePrediction = response.clauses;
       },
-      (error) => {
-        console.error('Error predicting clauses:', error);
+      (error: HttpErrorResponse) => {
+        console.error('Error predicting clause:', error.message);
       }
     );
   }
 }
-backend.service.ts
-typescript
-Copy code
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-
-@Injectable({
-  providedIn: 'root'
-})
-export class BackendService {
-  private baseUrl = 'http://localhost:5000'; // Update with your Flask backend URL
-
-  constructor(private http: HttpClient) {}
-
-  uploadPdf(formData: FormData) {
-    return this.http.post(`${this.baseUrl}/upload-pdf`, formData);
-  }
-
-  predictClause(data: any) {
-    return this.http.post(`${this.baseUrl}/predict-clause`, data);
-  }
-}
 app.module.ts
-Ensure the service is included in the providers array and HttpClientModule is imported.
-
 typescript
 Copy code
 import { BrowserModule } from '@angular/platform-browser';
 import { NgModule } from '@angular/core';
-import { HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
+import { HttpClientModule } from '@angular/common/http';
 
 import { AppComponent } from './app.component';
 import { UploadPdfComponent } from './upload-pdf/upload-pdf.component';
 import { PredictClauseComponent } from './predict-clause/predict-clause.component';
-import { BackendService } from './backend.service';
 
 @NgModule({
   declarations: [
@@ -193,10 +125,24 @@ import { BackendService } from './backend.service';
   ],
   imports: [
     BrowserModule,
-    HttpClientModule,
-    FormsModule
+    FormsModule,
+    HttpClientModule
   ],
-  providers: [BackendService],
+  providers: [],
   bootstrap: [AppComponent]
 })
 export class AppModule { }
+upload-pdf.component.css and predict-clause.component.css
+css
+Copy code
+/* Add your custom styles here */
+
+.upload-container, .predict-container {
+  margin: 20px 0;
+}
+
+textarea {
+  width: 100%;
+  height: 100px;
+  margin: 10px 0;
+}
