@@ -42,3 +42,10 @@ export class ExtractedTextComponent implements OnInit {
     });
   }
 }
+-------
+<div class="extracted-text">
+  <div *ngFor="let paragraph of paragraphs" class="paragraph">
+    <p>{{ paragraph.text }}</p>
+    <p><strong>Predicted Clause:</strong> {{ paragraph.clause }}</p>
+  </div>
+</div>
