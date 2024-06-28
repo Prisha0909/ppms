@@ -1,32 +1,16 @@
-<div class="container">
-  <div class="upload-container">
-    <mat-card class="card">
-      <mat-card-header>
-        <mat-card-title>Upload Document</mat-card-title>
-      </mat-card-header>
-      <mat-card-content>
-        <mat-form-field>
-          <mat-label>Select a PDF file</mat-label>
-          <input matInput type="file" (change)="onFileSelected($event)">
-        </mat-form-field>
-      </mat-card-content>
-      <mat-card-actions>
-        <button mat-raised-button color="primary" (click)="uploadFile()">Upload</button>
-      </mat-card-actions>
-    </mat-card>
-
-    <div *ngIf="selectedFile" class="selected-file">
-      <h3>Selected File: {{ selectedFile.name }}</h3>
-    </div>
-  </div>
-
-  <div class="extracted-text-container">
-    <h3>Extracted Text:</h3>
-    <p>{{ extractedText }}</p>
-  </div>
-
-  <div class="result-container">
-    <h3>Document Type:</h3>
-    <p>{{ documentType }}</p>
-  </div>
-</div>
+@app.route('/predict-clause', methods=['POST'])
+def predict_clause():
+    data = request.get_json()
+    text = data['text']
+    
+    # Call your clause prediction function/module
+    prediction_result = your_clause_prediction_module.predict(text)
+    
+    # Format the prediction result
+    result = {
+        "section": prediction_result['section'],
+        "clause": prediction_result['clause'],
+        "sub_section": prediction_result['sub_section']
+    }
+    
+    return jsonify(result)
