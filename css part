@@ -1,42 +1,202 @@
-from flask import Flask, request, jsonify
-import pdfplumber
-import pickle
-import tensorflow as tf
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from sklearn.preprocessing import LabelEncoder
-from classify_model import extract_text_from_pdf, preprocess_text, tokenizer as doc_tokenizer, label_encoder as doc_label_encoder, max_length as doc_max_length, classify_document as predict_document_type, train_model as train_document_model
-from clause_model import preprocess_text as preprocess_clause_text, predict_clauses, vectorizer, df
+app.component.html
+html
+Copy code
+<div class="container">
+  <div class="row mt-4">
+    <div class="col-md-6">
+      <app-upload-pdf></app-upload-pdf>
+    </div>
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header">
+          Document Type
+        </div>
+        <div class="card-body">
+          <p *ngIf="documentType">{{ documentType }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row mt-4">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header">
+          Extracted Text
+        </div>
+        <div class="card-body">
+          <p *ngFor="let paragraph of extractedText">{{ paragraph }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <app-predict-clause></app-predict-clause>
+    </div>
+  </div>
+</div>
+upload-pdf.component.html
+html
+Copy code
+<div class="card">
+  <div class="card-header">
+    Upload PDF
+  </div>
+  <div class="card-body">
+    <input type="file" (change)="onFileChange($event)" class="form-control-file">
+    <button class="btn btn-primary mt-2" (click)="uploadPdf()">Upload PDF</button>
+  </div>
+</div>
+upload-pdf.component.ts
+typescript
+Copy code
+import { Component } from '@angular/core';
+import { BackendService } from '../backend.service';
 
-app = Flask(__name__)
+@Component({
+  selector: 'app-upload-pdf',
+  templateUrl: './upload-pdf.component.html',
+  styleUrls: ['./upload-pdf.component.css']
+})
+export class UploadPdfComponent {
+  selectedFile: File | null = null;
+  documentType: string | null = null;
+  extractedText: string[] | null = null;
 
-@app.route('/upload-pdf', methods=['POST'])
-def upload_pdf():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
+  constructor(private backendService: BackendService) {}
 
-    text = extract_text_from_pdf(file)
-    doc_type = predict_document_type(text)
+  onFileChange(event: any) {
+    this.selectedFile = event.target.files[0];
+  }
 
-    return jsonify({
-        "doc_type": doc_type,
-        "extracted_text": text
-    })
+  uploadPdf() {
+    if (!this.selectedFile) {
+      alert('Please select a file.');
+      return;
+    }
 
-@app.route('/predict-clause', methods=['POST'])
-def predict_clause():
-    data = request.json
-    if 'text' not in data:
-        return jsonify({"error": "Missing 'text' parameter"}), 400
+    const formData = new FormData();
+    formData.append('file', this.selectedFile);
 
-    input_text = data['text']
-    clauses = predict_clauses(input_text)
+    this.backendService.uploadPdf(formData).subscribe(
+      (response: any) => {
+        this.documentType = response.doc_type;
+        this.extractedText = response.extracted_text.split('\n\n');
+      },
+      (error) => {
+        console.error('Error uploading PDF:', error);
+      }
+    );
+  }
+}
+predict-clause.component.html
+html
+Copy code
+<div class="card">
+  <div class="card-header">
+    Predict Clause
+  </div>
+  <div class="card-body">
+    <textarea class="form-control" rows="4" placeholder="Enter text to predict clauses..." [(ngModel)]="inputText"></textarea>
+    <button class="btn btn-primary mt-2" (click)="predictClause()">Predict</button>
+  </div>
+</div>
 
-    return jsonify({
-        "clauses": clauses
-    })
+<div class="card mt-4" *ngIf="predictedClauses">
+  <div class="card-header">
+    Predicted Clauses
+  </div>
+  <div class="card-body">
+    <div *ngFor="let clause of predictedClauses">
+      <p><strong>Text:</strong> {{ clause.text }}</p>
+      <p><strong>Section:</strong> {{ clause.section }}</p>
+      <p><strong>Clause:</strong> {{ clause.clause }}</p>
+      <p *ngIf="clause.sub_section"><strong>Subsection:</strong> {{ clause.sub_section }}</p>
+    </div>
+  </div>
+</div>
+predict-clause.component.ts
+typescript
+Copy code
+import { Component } from '@angular/core';
+import { BackendService } from '../backend.service';
 
-if __name__ == '__main__':
-    app.run(debug=True)
+@Component({
+  selector: 'app-predict-clause',
+  templateUrl: './predict-clause.component.html',
+  styleUrls: ['./predict-clause.component.css']
+})
+export class PredictClauseComponent {
+  inputText: string = '';
+  predictedClauses: any[] | null = null;
+
+  constructor(private backendService: BackendService) {}
+
+  predictClause() {
+    if (!this.inputText.trim()) {
+      alert('Please enter text to predict clauses.');
+      return;
+    }
+
+    const data = { text: this.inputText };
+
+    this.backendService.predictClause(data).subscribe(
+      (response: any) => {
+        this.predictedClauses = response.clauses;
+      },
+      (error) => {
+        console.error('Error predicting clauses:', error);
+      }
+    );
+  }
+}
+backend.service.ts
+typescript
+Copy code
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class BackendService {
+  private baseUrl = 'http://localhost:5000'; // Update with your Flask backend URL
+
+  constructor(private http: HttpClient) {}
+
+  uploadPdf(formData: FormData) {
+    return this.http.post(`${this.baseUrl}/upload-pdf`, formData);
+  }
+
+  predictClause(data: any) {
+    return this.http.post(`${this.baseUrl}/predict-clause`, data);
+  }
+}
+app.module.ts
+Ensure the service is included in the providers array and HttpClientModule is imported.
+
+typescript
+Copy code
+import { BrowserModule } from '@angular/platform-browser';
+import { NgModule } from '@angular/core';
+import { HttpClientModule } from '@angular/common/http';
+import { FormsModule } from '@angular/forms';
+
+import { AppComponent } from './app.component';
+import { UploadPdfComponent } from './upload-pdf/upload-pdf.component';
+import { PredictClauseComponent } from './predict-clause/predict-clause.component';
+import { BackendService } from './backend.service';
+
+@NgModule({
+  declarations: [
+    AppComponent,
+    UploadPdfComponent,
+    PredictClauseComponent
+  ],
+  imports: [
+    BrowserModule,
+    HttpClientModule,
+    FormsModule
+  ],
+  providers: [BackendService],
+  bootstrap: [AppComponent]
+})
+export class AppModule { }
