@@ -1,16 +1,113 @@
-@app.route('/predict-clause', methods=['POST'])
-def predict_clause():
-    data = request.get_json()
-    text = data['text']
-    
-    # Call your clause prediction function/module
-    prediction_result = your_clause_prediction_module.predict(text)
-    
-    # Format the prediction result
+import os
+import re
+import string
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Function to preprocess text
+def preprocess_text(text):
+    text = text.lower()
+    text = re.sub(r'\d+', '', text)
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    text = text.strip()
+    return text
+
+# Function to predict clause based on input text
+def predict_clause(input_text):
+    documents = []
+    base_dir = 'dataset/'
+
+    # Load and preprocess the dataset
+    for section_folder in os.listdir(base_dir):
+        section_path = os.path.join(base_dir, section_folder)
+        if os.path.isdir(section_path):
+            for clause_file in os.listdir(section_path):
+                clause_path = os.path.join(section_path, clause_file)
+                if os.path.isfile(clause_path):
+                    with open(clause_path, 'r', encoding='utf-8') as file:
+                        content = file.read().strip()
+                        section_name = section_folder
+                        clause_name = os.path.splitext(clause_file)[0]
+
+                        # Split content by the delimiter ###xxx###
+                        sub_clauses = content.split("###xxx###")
+                        for sub_clause in sub_clauses:
+                            # Find all matches of the pattern ###Sub-section name###Sub-clause text
+                            matches = re.findall(r"###(.+?)###(.+)", sub_clause, re.DOTALL)
+                            if matches:
+                                for match in matches:
+                                    sub_section_name = match[0].strip()
+                                    clause_text = match[1].strip()
+                                    if clause_text:
+                                        documents.append({
+                                            "text": preprocess_text(clause_text),
+                                            "section": section_name,
+                                            "clause": clause_name,
+                                            "sub_section": sub_section_name
+                                        })
+                            else:
+                                # No sub-section name, just use the entire sub_clause text
+                                clause_text = sub_clause.strip()
+                                if clause_text:
+                                    documents.append({
+                                        "text": preprocess_text(clause_text),
+                                        "section": section_name,
+                                        "clause": clause_name,
+                                        "sub_section": None
+                                    })
+
+    # Convert to DataFrame for easier handling
+    df = pd.DataFrame(documents)
+
+    # Vectorize the dataset using TF-IDF
+    vectorizer = TfidfVectorizer()
+    X = vectorizer.fit_transform(df['text'])
+
+    # Preprocess the input clause text
+    input_clause_preprocessed = preprocess_text(input_text)
+
+    # Vectorize the input clause
+    input_clause_vectorized = vectorizer.transform([input_clause_preprocessed])
+
+    # Calculate similarity for clauses within the same section
+    similarities = {}
+    for section_name in df['section'].unique():
+        section_indices = df[df['section'] == section_name].index
+        section_X = X[section_indices]
+        section_similarities = cosine_similarity(input_clause_vectorized, section_X)
+        max_similarity = section_similarities.max()
+        max_similarity_index = section_indices[section_similarities.argmax()]
+        similarities[section_name] = (max_similarity, max_similarity_index)
+
+    # Find the most similar clause across all sections
+    most_similar_section = max(similarities, key=lambda x: similarities[x][0])
+    most_similar_clause_index = similarities[most_similar_section][1]
+    most_similar_clause = df.loc[most_similar_clause_index]
+
+    # Prepare the result
     result = {
-        "section": prediction_result['section'],
-        "clause": prediction_result['clause'],
-        "sub_section": prediction_result['sub_section']
+        "section": most_similar_clause['section'],
+        "clause": most_similar_clause['clause'],
+        "sub_section": most_similar_clause['sub_section']
     }
+    return result
+-------
+from flask import Flask, request, jsonify
+from your_module_name import predict_clause  # Replace with your actual module name
+
+app = Flask(__name__)
+
+@app.route('/predict-clause', methods=['POST'])
+def predict_clause_handler():
+    data = request.get_json()
+    input_text = data['text']
     
-    return jsonify(result)
+    # Call the predict_clause function
+    prediction_result = predict_clause(input_text)
+    
+    # Return the result as JSON
+    return jsonify(prediction_result)
+
+if __name__ == '__main__':
+    app.run(debug=True)
