@@ -1,160 +1,47 @@
-app.component.ts
-typescript
-Copy code
-import { Component } from '@angular/core';
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import os
+from classify_model import classify_document
+from clause_model import predict_clauses
+import pdfplumber
 
-@Component({
-  selector: 'app-root',
-  templateUrl: './app.component.html',
-  styleUrls: ['./app.component.css']
-})
-export class AppComponent {
-  title = 'Document Processing';
-}
-app.component.html
-html
-Copy code
-<router-outlet></router-outlet>
-app.component.css
-This can be left empty or you can add any global styles you prefer.
+app = Flask(__name__)
+CORS(app)
 
-css
-Copy code
-/* You can add global styles here */
-document-processing.component.ts
-typescript
-Copy code
-import { Component } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+@app.route('/classify-document', methods=['POST'])
+def classify_document_route():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    if file and file.filename.endswith('.pdf'):
+        file_path = os.path.join('uploads', file.filename)
+        file.save(file_path)
+        document_type = classify_document(file_path)
+        return jsonify({'document_type': document_type})
 
-@Component({
-  selector: 'app-document-processing',
-  templateUrl: './document-processing.component.html',
-  styleUrls: ['./document-processing.component.css']
-})
-export class DocumentProcessingComponent {
-  documentType: string | null = null;
-  paragraphs: any[] = [];
-  selectedFile: File | null = null;
+@app.route('/predict-clauses', methods=['POST'])
+def predict_clauses_route():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    if file and file.filename.endswith('.pdf'):
+        file_path = os.path.join('uploads', file.filename)
+        file.save(file_path)
 
-  constructor(private http: HttpClient) { }
+        # Extract text from the PDF
+        with pdfplumber.open(file_path) as pdf:
+            text = ""
+            for page in pdf.pages:
+                text += page.extract_text()
 
-  onFileSelected(event: any): void {
-    this.selectedFile = event.target.files[0];
-  }
+        predictions = predict_clauses(text)
+        return jsonify(predictions)
 
-  uploadAndProcessFile(): void {
-    if (this.selectedFile) {
-      const formData = new FormData();
-      formData.append('file', this.selectedFile, this.selectedFile.name);
-
-      // Step 1: Classify the document type
-      this.http.post<{ document_type: string }>('http://localhost:5000/classify-document', formData).subscribe(
-        (data) => {
-          this.documentType = data.document_type;
-
-          // Step 2: Predict clauses for each paragraph
-          this.http.post<any[]>('http://localhost:5000/predict-clauses', formData).subscribe(
-            (clauses) => {
-              this.paragraphs = clauses;
-            },
-            (error) => {
-              console.log('Error predicting clauses:', error);
-            }
-          );
-        },
-        (error) => {
-          console.log('Error classifying document:', error);
-        }
-      );
-    }
-  }
-
-  displayPredictions(paragraph: any): void {
-    alert(`Section: ${paragraph.section}, Clause: ${paragraph.clause}, Sub-clause: ${paragraph.sub_section}`);
-  }
-}
-document-processing.component.html
-html
-Copy code
-<div>
-  <input type="file" (change)="onFileSelected($event)">
-  <button (click)="uploadAndProcessFile()">Upload and Process File</button>
-</div>
-
-<div *ngIf="documentType">
-  <h3>Document Type: {{ documentType }}</h3>
-</div>
-
-<div *ngFor="let paragraph of paragraphs">
-  <div (click)="displayPredictions(paragraph)">
-    {{ paragraph.text }}
-  </div>
-</div>
-document-processing.component.css
-This can be left empty or you can add any component-specific styles you prefer.
-
-css
-Copy code
-/* You can add styles specific to the document processing component here */
-app-routing.module.ts
-typescript
-Copy code
-import { NgModule } from '@angular/core';
-import { RouterModule, Routes } from '@angular/router';
-import { DocumentProcessingComponent } from './document-processing/document-processing.component';
-
-const routes: Routes = [
-  { path: '', component: DocumentProcessingComponent }
-];
-
-@NgModule({
-  imports: [RouterModule.forRoot(routes)],
-  exports: [RouterModule]
-})
-export class AppRoutingModule { }
-app.module.ts
-typescript
-Copy code
-import { BrowserModule } from '@angular/platform-browser';
-import { NgModule } from '@angular/core';
-import { HttpClientModule } from '@angular/common/http';
-import { AppRoutingModule } from './app-routing.module';
-import { AppComponent } from './app.component';
-import { DocumentProcessingComponent } from './document-processing/document-processing.component';
-
-@NgModule({
-  declarations: [
-    AppComponent,
-    DocumentProcessingComponent
-  ],
-  imports: [
-    BrowserModule,
-    AppRoutingModule,
-    HttpClientModule
-  ],
-  providers: [],
-  bootstrap: [AppComponent]
-})
-export class AppModule { }
-styles.css
-This file is for global styles in your Angular project. You can leave it empty or add any global styles.
-
-css
-Copy code
-/* You can add global styles here */
-index.html
-html
-Copy code
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Document Processing</title>
-  <base href="/">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-</head>
-<body>
-  <app-root></app-root>
-</body>
-</html>
+if __name__ == '__main__':
+    if not os.path.exists('uploads'):
+        os.makedirs('uploads')
+    app.run(debug=True)
