@@ -1,148 +1,224 @@
-app.component.html
+PdfUploaderComponent
+Template (pdf-uploader.component.html):
 html
 Copy code
-<div class="container">
-  <h1>Document Classification and Clause Prediction</h1>
-  <app-upload-pdf></app-upload-pdf>
-  <app-predict-clause></app-predict-clause>
+<div class="pdf-uploader">
+  <label class="custom-file-upload">
+    <input type="file" (change)="onFileSelected($event)" />
+    Upload PDF
+  </label>
 </div>
-upload-pdf.component.html
-html
-Copy code
-<div class="upload-container">
-  <h2>Upload PDF</h2>
-  <input type="file" (change)="onFileSelected($event)" />
-  <button (click)="onUpload()">Upload</button>
-  <div *ngIf="documentType">
-    <h3>Document Type: {{ documentType }}</h3>
-  </div>
-  <div *ngIf="extractedText">
-    <h3>Extracted Text:</h3>
-    <p>{{ extractedText }}</p>
-  </div>
-</div>
-upload-pdf.component.ts
+Component Class (pdf-uploader.component.ts):
 typescript
 Copy code
 import { Component } from '@angular/core';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { DocumentService } from '../document.service';
 
 @Component({
-  selector: 'app-upload-pdf',
-  templateUrl: './upload-pdf.component.html',
-  styleUrls: ['./upload-pdf.component.css']
+  selector: 'app-pdf-uploader',
+  templateUrl: './pdf-uploader.component.html',
+  styleUrls: ['./pdf-uploader.component.css']
 })
-export class UploadPdfComponent {
-  selectedFile: File | null = null;
-  documentType: string | null = null;
-  extractedText: string | null = null;
+export class PdfUploaderComponent {
 
-  constructor(private http: HttpClient) {}
+  constructor(private documentService: DocumentService) { }
 
-  onFileSelected(event: Event) {
-    const input = event.target as HTMLInputElement;
-    if (input.files && input.files.length > 0) {
-      this.selectedFile = input.files[0];
-    }
-  }
-
-  onUpload() {
-    if (this.selectedFile) {
-      const formData = new FormData();
-      formData.append('file', this.selectedFile);
-
-      this.http.post<any>('http://localhost:5000/upload-pdf', formData).subscribe(
-        response => {
-          this.documentType = response.document_type;
-          this.extractedText = response.extracted_text;
-        },
-        (error: HttpErrorResponse) => {
-          console.error('Error uploading file:', error.message);
-        }
-      );
+  onFileSelected(event: any): void {
+    const file: File = event.target.files[0];
+    if (file) {
+      this.documentService.uploadPdf(file).subscribe(response => {
+        console.log(response);  // For debugging
+        this.documentService.setDocumentData(response);
+      });
     }
   }
 }
-predict-clause.component.html
+Styles (pdf-uploader.component.css):
+css
+Copy code
+.pdf-uploader {
+  margin-top: 20px;
+}
+
+.custom-file-upload {
+  display: inline-block;
+  padding: 10px 20px;
+  cursor: pointer;
+  background-color: #007bff;
+  color: white;
+  border-radius: 5px;
+  border: 1px solid #007bff;
+  text-align: center;
+}
+
+.custom-file-upload:hover {
+  background-color: #0056b3;
+}
+DocTypeDisplayComponent
+Template (doc-type-display.component.html):
 html
 Copy code
-<div class="predict-container">
-  <h2>Predict Clause</h2>
-  <textarea [(ngModel)]="inputText" placeholder="Enter text here..."></textarea>
-  <button (click)="onPredict()">Predict</button>
-  <div *ngIf="clausePrediction">
-    <h3>Clause Prediction:</h3>
-    <pre>{{ clausePrediction | json }}</pre>
-  </div>
+<div class="doc-type-display">
+  <h3>Document Type: {{ docType }}</h3>
 </div>
-predict-clause.component.ts
+Component Class (doc-type-display.component.ts):
 typescript
 Copy code
-import { Component } from '@angular/core';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { Component, OnInit } from '@angular/core';
+import { DocumentService } from '../document.service';
 
 @Component({
-  selector: 'app-predict-clause',
-  templateUrl: './predict-clause.component.html',
-  styleUrls: ['./predict-clause.component.css']
+  selector: 'app-doc-type-display',
+  templateUrl: './doc-type-display.component.html',
+  styleUrls: ['./doc-type-display.component.css']
 })
-export class PredictClauseComponent {
-  inputText: string = '';
-  clausePrediction: any;
+export class DocTypeDisplayComponent implements OnInit {
+  docType: string;
 
-  constructor(private http: HttpClient) {}
+  constructor(private documentService: DocumentService) { }
 
-  onPredict() {
-    const requestBody = { text: this.inputText };
-
-    this.http.post<any>('http://localhost:5000/predict-clause', requestBody).subscribe(
-      response => {
-        this.clausePrediction = response.clauses;
-      },
-      (error: HttpErrorResponse) => {
-        console.error('Error predicting clause:', error.message);
+  ngOnInit(): void {
+    this.documentService.getDocumentData().subscribe(data => {
+      if (data) {
+        this.docType = data.doc_type;
       }
-    );
+    });
   }
 }
-app.module.ts
+Styles (doc-type-display.component.css):
+css
+Copy code
+.doc-type-display {
+  float: right;
+  margin-top: 20px;
+  margin-right: 20px;
+}
+ExtractedTextComponent
+Template (extracted-text.component.html):
+html
+Copy code
+<div class="extracted-text">
+  <div *ngFor="let paragraph of paragraphs" class="paragraph">
+    <p>{{ paragraph.text }}</p>
+    <p><strong>Predicted Clause:</strong> {{ paragraph.clause }}</p>
+  </div>
+</div>
+Component Class (extracted-text.component.ts):
+typescript
+Copy code
+import { Component, OnInit } from '@angular/core';
+import { DocumentService } from '../document.service';
+
+@Component({
+  selector: 'app-extracted-text',
+  templateUrl: './extracted-text.component.html',
+  styleUrls: ['./extracted-text.component.css']
+})
+export class ExtractedTextComponent implements OnInit {
+  paragraphs: any[] = [];
+
+  constructor(private documentService: DocumentService) { }
+
+  ngOnInit(): void {
+    this.documentService.getDocumentData().subscribe(data => {
+      if (data) {
+        this.paragraphs = data.clauses;
+      }
+    });
+  }
+}
+Styles (extracted-text.component.css):
+css
+Copy code
+.extracted-text {
+  clear: both;
+  margin-top: 20px;
+  padding-left: 20px;
+}
+
+.paragraph {
+  margin-bottom: 20px;
+}
+Document Service
+Service Class (document.service.ts):
+typescript
+Copy code
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, BehaviorSubject } from 'rxjs';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class DocumentService {
+  private documentData = new BehaviorSubject<any>(null);
+
+  constructor(private http: HttpClient) { }
+
+  uploadPdf(file: File): Observable<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<any>('http://localhost:5000/upload-pdf', formData);
+  }
+
+  setDocumentData(data: any): void {
+    this.documentData.next(data);
+  }
+
+  getDocumentData(): Observable<any> {
+    return this.documentData.asObservable();
+  }
+}
+2. App Component
+Template (app.component.html):
+html
+Copy code
+<div class="app">
+  <div class="top-section">
+    <app-pdf-uploader></app-pdf-uploader>
+    <app-doc-type-display></app-doc-type-display>
+  </div>
+  <app-extracted-text></app-extracted-text>
+</div>
+Component Class (app.component.ts):
+typescript
+Copy code
+import { Component } from '@angular/core';
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.css']
+})
+export class AppComponent {
+}
+Styles (app.component.css): No additional styles needed here.
+3. AppModule
+Module Class (app.module.ts):
 typescript
 Copy code
 import { BrowserModule } from '@angular/platform-browser';
 import { NgModule } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
 
 import { AppComponent } from './app.component';
-import { UploadPdfComponent } from './upload-pdf/upload-pdf.component';
-import { PredictClauseComponent } from './predict-clause/predict-clause.component';
+import { PdfUploaderComponent } from './pdf-uploader/pdf-uploader.component';
+import { DocTypeDisplayComponent } from './doc-type-display/doc-type-display.component';
+import { ExtractedTextComponent } from './extracted-text/extracted-text.component';
+import { DocumentService } from './document.service';
 
 @NgModule({
   declarations: [
     AppComponent,
-    UploadPdfComponent,
-    PredictClauseComponent
+    PdfUploaderComponent,
+    DocTypeDisplayComponent,
+    ExtractedTextComponent
   ],
   imports: [
     BrowserModule,
-    FormsModule,
     HttpClientModule
   ],
-  providers: [],
+  providers: [DocumentService],
   bootstrap: [AppComponent]
 })
 export class AppModule { }
-upload-pdf.component.css and predict-clause.component.css
-css
-Copy code
-/* Add your custom styles here */
-
-.upload-container, .predict-container {
-  margin: 20px 0;
-}
-
-textarea {
-  width: 100%;
-  height: 100px;
-  margin: 10px 0;
-}
