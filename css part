@@ -1,17 +1,44 @@
-@app.route('/predict-clause', methods=['POST'])
-def predict_clause():
-    data = request.json  # Assuming JSON payload with 'text' key containing user input
-    user_input_text = data.get('text', '')
+<div class="extracted-text">
+  <p>{{ extractedText }}</p>
+  <div class="input-section">
+    <label for="textInput">Enter Text:</label>
+    <textarea id="textInput" [(ngModel)]="userInput" placeholder="Enter text for prediction"></textarea>
+    <button (click)="predictClause()">Predict Clause</button>
+  </div>
+  <div *ngIf="predictionResult" class="prediction-result">
+    <h4>Prediction:</h4>
+    <p><strong>Section:</strong> {{ predictionResult.section }}</p>
+    <p><strong>Clause:</strong> {{ predictionResult.clause }}</p>
+    <p><strong>Sub-Section:</strong> {{ predictionResult.sub_section }}</p>
+  </div>
+</div>
+import { Component, OnInit } from '@angular/core';
+import { DocumentService } from '../document.service';
+import { HttpClient } from '@angular/common/http';
 
-    # Preprocess the user input text (similar to training data preprocessing)
-    preprocessed_text = preprocess_text(user_input_text)
+@Component({
+  selector: 'app-extracted-text',
+  templateUrl: './extracted-text.component.html',
+  styleUrls: ['./extracted-text.component.css']
+})
+export class ExtractedTextComponent implements OnInit {
+  extractedText: string;
+  userInput: string;
+  predictionResult: any;
 
-    # Tokenize and pad sequences
-    sequences = tokenizer.texts_to_sequences([preprocessed_text])
-    max_length = 1000  # Adjust based on your model's input shape requirements
-    padded_sequences = pad_sequences(sequences, maxlen=max_length, padding='post')
+  constructor(private documentService: DocumentService, private http: HttpClient) { }
 
-    # Predict clauses
-    predictions = predict_clauses(padded_sequences)  # Implement predict_clauses function
+  ngOnInit(): void {
+    this.documentService.getDocumentData().subscribe(data => {
+      if (data) {
+        this.extractedText = data.extracted_text;
+      }
+    });
+  }
 
-    return jsonify(predictions)
+  predictClause(): void {
+    this.http.post<any>('http://localhost:5000/predict-clause', { text: this.userInput }).subscribe(response => {
+      this.predictionResult = response;
+    });
+  }
+}
