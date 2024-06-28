@@ -1,47 +1,42 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS
-import os
-from classify_model import classify_document
-from clause_model import predict_clauses
 import pdfplumber
+import pickle
+import tensorflow as tf
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from sklearn.preprocessing import LabelEncoder
+from classify_model import extract_text_from_pdf, preprocess_text, tokenizer as doc_tokenizer, label_encoder as doc_label_encoder, max_length as doc_max_length, classify_document as predict_document_type, train_model as train_document_model
+from clause_model import preprocess_text as preprocess_clause_text, predict_clauses, vectorizer, df
 
 app = Flask(__name__)
-CORS(app)
 
-@app.route('/classify-document', methods=['POST'])
-def classify_document_route():
+@app.route('/upload-pdf', methods=['POST'])
+def upload_pdf():
     if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
+        return jsonify({"error": "No file part"}), 400
     file = request.files['file']
     if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-    if file and file.filename.endswith('.pdf'):
-        file_path = os.path.join('uploads', file.filename)
-        file.save(file_path)
-        document_type = classify_document(file_path)
-        return jsonify({'document_type': document_type})
+        return jsonify({"error": "No selected file"}), 400
 
-@app.route('/predict-clauses', methods=['POST'])
-def predict_clauses_route():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-    if file and file.filename.endswith('.pdf'):
-        file_path = os.path.join('uploads', file.filename)
-        file.save(file_path)
+    text = extract_text_from_pdf(file)
+    doc_type = predict_document_type(text)
 
-        # Extract text from the PDF
-        with pdfplumber.open(file_path) as pdf:
-            text = ""
-            for page in pdf.pages:
-                text += page.extract_text()
+    return jsonify({
+        "doc_type": doc_type,
+        "extracted_text": text
+    })
 
-        predictions = predict_clauses(text)
-        return jsonify(predictions)
+@app.route('/predict-clause', methods=['POST'])
+def predict_clause():
+    data = request.json
+    if 'text' not in data:
+        return jsonify({"error": "Missing 'text' parameter"}), 400
+
+    input_text = data['text']
+    clauses = predict_clauses(input_text)
+
+    return jsonify({
+        "clauses": clauses
+    })
 
 if __name__ == '__main__':
-    if not os.path.exists('uploads'):
-        os.makedirs('uploads')
     app.run(debug=True)
