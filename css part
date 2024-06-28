@@ -1,130 +1,17 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import os
-from classify_model import classify_document, extract_text_from_pdf
-from clause_model import predict_clauses, load_clause_data, preprocess_text, predict_clause
-
-app = Flask(__name__)
-CORS(app)
-
-UPLOAD_FOLDER = 'uploads'
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-
-# Load clause data and prepare the vectorizer and DataFrame
-df, vectorizer, X = load_clause_data()
-
-@app.route('/upload-pdf', methods=['POST'])
-def upload_pdf():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-
-    file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(file_path)
-
-    # Classify the document
-    doc_type = classify_document(file_path)
-
-    # Extract text from PDF
-    text = extract_text_from_pdf(file_path)
-
-    return jsonify({'doc_type': doc_type, 'text': text})
-
 @app.route('/predict-clause', methods=['POST'])
-def predict_clause_endpoint():
-    data = request.get_json()
-    input_clause = data['text']
-    prediction = predict_clause(input_clause, df, vectorizer, X)
-    return jsonify(prediction)
+def predict_clause():
+    data = request.json  # Assuming JSON payload with 'text' key containing user input
+    user_input_text = data.get('text', '')
 
-if __name__ == '__main__':
-    app.run(debug=True)
-------
-import os
-import re
-import string
-import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+    # Preprocess the user input text (similar to training data preprocessing)
+    preprocessed_text = preprocess_text(user_input_text)
 
-# Function to preprocess text
-def preprocess_text(text):
-    text = text.lower()
-    text = re.sub(r'\d+', '', text)
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    text = text.strip()
-    return text
+    # Tokenize and pad sequences
+    sequences = tokenizer.texts_to_sequences([preprocessed_text])
+    max_length = 1000  # Adjust based on your model's input shape requirements
+    padded_sequences = pad_sequences(sequences, maxlen=max_length, padding='post')
 
-def load_clause_data():
-    documents = []
-    base_dir = 'dataset/'
+    # Predict clauses
+    predictions = predict_clauses(padded_sequences)  # Implement predict_clauses function
 
-    for section_folder in os.listdir(base_dir):
-        section_path = os.path.join(base_dir, section_folder)
-        if os.path.isdir(section_path):
-            for clause_file in os.listdir(section_path):
-                clause_path = os.path.join(section_path, clause_file)
-                if os.path.isfile(clause_path):
-                    with open(clause_path, 'r', encoding='utf-8') as file:
-                        content = file.read().strip()
-                        section_name = section_folder
-                        clause_name = os.path.splitext(clause_file)[0]
-                        
-                        sub_clauses = content.split("###xxx###")
-                        for sub_clause in sub_clauses:
-                            matches = re.findall(r"###(.+?)###(.+)", sub_clause, re.DOTALL)
-                            if matches:
-                                for match in matches:
-                                    sub_section_name = match[0].strip()
-                                    clause_text = match[1].strip()
-                                    if clause_text:
-                                        documents.append({
-                                            "text": preprocess_text(clause_text),
-                                            "section": section_name,
-                                            "clause": clause_name,
-                                            "sub_section": sub_section_name
-                                        })
-                            else:
-                                clause_text = sub_clause.strip()
-                                if clause_text:
-                                    documents.append({
-                                        "text": preprocess_text(clause_text),
-                                        "section": section_name,
-                                        "clause": clause_name,
-                                        "sub_section": None
-                                    })
-
-    df = pd.DataFrame(documents)
-    vectorizer = TfidfVectorizer()
-    X = vectorizer.fit_transform(df['text'])
-
-    return df, vectorizer, X
-
-def predict_clause(input_clause, df, vectorizer, X):
-    input_clause_preprocessed = preprocess_text(input_clause)
-    input_clause_vectorized = vectorizer.transform([input_clause_preprocessed])
-
-    similarities = {}
-    for section_name in df['section'].unique():
-        section_indices = df[df['section'] == section_name].index
-        section_X = X[section_indices]
-        section_similarities = cosine_similarity(input_clause_vectorized, section_X)
-        max_similarity = section_similarities.max()
-        max_similarity_index = section_indices[section_similarities.argmax()]
-        similarities[section_name] = (max_similarity, max_similarity_index)
-
-    most_similar_section = max(similarities, key=lambda x: similarities[x][0])
-    most_similar_clause_index = similarities[most_similar_section][1]
-    most_similar_clause = df.loc[most_similar_clause_index]
-
-    result = {
-        "section": most_similar_clause['section'],
-        "clause": most_similar_clause['clause'],
-        "sub_section": most_similar_clause['sub_section'] if most_similar_clause['sub_section'] else None
-    }
-
-    return result
+    return jsonify(predictions)
