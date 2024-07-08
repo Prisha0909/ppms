@@ -1,51 +1,14 @@
-<div class="extracted-text">
-  <p>{{ extractedText }}</p>
-  <div class="input-section">
-    <label for="textInput">Enter Text:</label>
-    <textarea id="textInput" [(ngModel)]="userInput" placeholder="Enter text for prediction"></textarea>
-    <button (click)="predictClause()">Predict Clause</button>
-  </div>
-  <div *ngIf="predictionResult" class="prediction-result">
-    <h4>Prediction:</h4>
-    <p><strong>Section:</strong> {{ predictionResult.section }}</p>
-    <p><strong>Clause:</strong> {{ predictionResult.clause }}</p>
-    <p><strong>Sub-Section:</strong> {{ predictionResult.sub_section }}</p>
-  </div>
-</div>
-import { Component, OnInit } from '@angular/core';
-import { DocumentService } from '../document.service';
-import { HttpClient } from '@angular/common/http';
-
-@Component({
-  selector: 'app-extracted-text',
-  templateUrl: './extracted-text.component.html',
-  styleUrls: ['./extracted-text.component.css']
-})
-export class ExtractedTextComponent implements OnInit {
-  extractedText: string;
-  userInput: string;
-  predictionResult: any;
-
-  constructor(private documentService: DocumentService, private http: HttpClient) { }
-
-  ngOnInit(): void {
-    this.documentService.getDocumentData().subscribe(data => {
-      if (data) {
-        this.extractedText = data.extracted_text;
-      }
-    });
-  }
-
-  predictClause(): void {
-    this.http.post<any>('http://localhost:5000/predict-clause', { text: this.userInput }).subscribe(response => {
-      this.predictionResult = response;
-    });
-  }
-}
--------
-<div class="extracted-text">
-  <div *ngFor="let paragraph of paragraphs" class="paragraph">
-    <p>{{ paragraph.text }}</p>
-    <p><strong>Predicted Clause:</strong> {{ paragraph.clause }}</p>
-  </div>
-</div>
+dataset/
+├── DocumentType1/
+│   ├── file1.pdf
+│   ├── file2.pdf
+├── DocumentType2/
+│   ├── file1.pdf
+│   ├── file2.pdf
+dataset/
+├── Section1/
+│   ├── clause1.txt
+│   ├── clause2.txt
+├── Section2/
+│   ├── clause1.txt
+│   ├── clause2.txt
