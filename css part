@@ -1,119 +1,105 @@
-import os
-import re
-import string
-import pandas as pd
-import pickle
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+### Content Document for Machine Learning Model Demonstration Project
 
-# Load and preprocess the dataset
-documents = []
-base_dir = 'dataset/'
+---
 
-# Function to preprocess text
-def preprocess_text(text):
-    text = text.lower()
-    text = re.sub(r'\d+', '', text)
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    text = text.strip()
-    return text
+## Page 1: Theory of the Algorithm Models
 
-# Traverse through the dataset directory structure
-for section_folder in os.listdir(base_dir):
-    section_path = os.path.join(base_dir, section_folder)
-    if os.path.isdir(section_path):
-        for clause_file in os.listdir(section_path):
-            clause_path = os.path.join(section_path, clause_file)
-            if os.path.isfile(clause_path):
-                with open(clause_path, 'r', encoding='utf-8') as file:
-                    content = file.read().strip()
-                    section_name = section_folder
-                    clause_name = os.path.splitext(clause_file)[0]
-                    
-                    # Split content by the delimiter ###xxx###
-                    sub_clauses = content.split("###xxx###")
-                    for sub_clause in sub_clauses:
-                        # Find all matches of the pattern ###Sub-section name###Sub-clause text
-                        matches = re.findall(r"###(.+?)###(.+)", sub_clause, re.DOTALL)
-                        if matches:
-                            for match in matches:
-                                sub_section_name = match[0].strip()
-                                clause_text = match[1].strip()
-                                if clause_text:
-                                    documents.append({
-                                        "text": preprocess_text(clause_text),
-                                        "section": section_name,
-                                        "clause": clause_name,
-                                        "sub_section": sub_section_name
-                                    })
-                        else:
-                            # No sub-section name, just use the entire sub_clause text
-                            clause_text = sub_clause.strip()
-                            if clause_text:
-                                documents.append({
-                                    "text": preprocess_text(clause_text),
-                                    "section": section_name,
-                                    "clause": clause_name,
-                                    "sub_section": None
-                                })
+### Document Classification Model
 
-# Convert to DataFrame for easier handling
-df = pd.DataFrame(documents)
+#### Introduction
+The Document Classification Model is designed to classify the type of a document based on its content. This model uses Natural Language Processing (NLP) techniques and machine learning algorithms to predict the document category, such as "Legal Document," "Invoice," "Contract," etc.
 
-# Vectorize the dataset using TF-IDF
-vectorizer = TfidfVectorizer()
-X = vectorizer.fit_transform(df['text'])
+#### Algorithm Used
 
-# Save the TF-IDF vectorizer
-with open('tfidf_vectorizer.pkl', 'wb') as file:
-    pickle.dump(vectorizer, file)
+1. **Convolutional Neural Networks (CNNs)**:
+   - CNNs are a class of deep learning models most commonly used for analyzing visual imagery but can also be effectively applied to text data.
+   - CNNs use multiple layers, such as convolutional layers, pooling layers, and dense (fully connected) layers, to learn hierarchical representations of the input data.
+   - In this project, a 1D CNN is used, which processes sequences of words in the document.
 
-# Save the transformed dataset
-with open('vectorized_data.pkl', 'wb') as file:
-    pickle.dump(X, file)
+2. **Text Vectorization**:
+   - Text data must be converted into a numerical format before it can be used to train machine learning models.
+   - This is done using a tokenizer, which converts words to integers based on their frequency and then pads the sequences to ensure uniform input length.
+   - An embedding layer is then used to transform these sequences into dense vectors that capture semantic relationships between words.
 
-# Save the DataFrame
-df.to_pickle('documents_df.pkl')
+3. **Model Architecture**:
+   - **Embedding Layer**: Converts word indices to dense vectors of fixed size.
+   - **Convolutional Layer**: Applies convolutional filters to capture local features of the text.
+   - **Pooling Layer**: Reduces the dimensionality of the feature maps while retaining the most important information.
+   - **Fully Connected Layers**: Perform the classification based on the features extracted by the convolutional and pooling layers.
+   
+4. **Training and Prediction**:
+   - The model is trained on a labeled dataset of documents, with each document's text and its corresponding category.
+   - After training, the model can predict the category of new, unseen documents by analyzing their content.
 
-# Function to load saved models and data
-def load_models():
-    with open('tfidf_vectorizer.pkl', 'rb') as file:
-        vectorizer = pickle.load(file)
-    with open('vectorized_data.pkl', 'rb') as file:
-        X = pickle.load(file)
-    df = pd.read_pickle('documents_df.pkl')
-    return vectorizer, X, df
+#### Steps
 
-# Function to predict clauses for given text
-def predict_clauses(text):
-    vectorizer, X, df = load_models()
-    paragraphs = text.split('\n\n')  # Splitting text into paragraphs
-    clauses = []
-    for para in paragraphs:
-        if not para.strip():
-            continue  # Skip empty paragraphs
-        # Preprocess the input clause text
-        input_clause_preprocessed = preprocess_text(para)
-        # Vectorize the input clause
-        input_clause_vectorized = vectorizer.transform([input_clause_preprocessed])
-        # Calculate similarity for clauses within the same section
-        similarities = {}
-        for section_name in df['section'].unique():
-            section_indices = df[df['section'] == section_name].index
-            section_X = X[section_indices]
-            section_similarities = cosine_similarity(input_clause_vectorized, section_X)
-            max_similarity = section_similarities.max()
-            max_similarity_index = section_indices[section_similarities.argmax()]
-            similarities[section_name] = (max_similarity, max_similarity_index)
-        # Find the most similar clause across all sections
-        most_similar_section = max(similarities, key=lambda x: similarities[x][0])
-        most_similar_clause_index = similarities[most_similar_section][1]
-        most_similar_clause = df.loc[most_similar_clause_index]
-        # Append the result
-        clauses.append({
-            "text": para,
-            "section": most_similar_clause['section'],
-            "clause": most_similar_clause['clause'],
-            "sub_section": most_similar_clause['sub_section'] if most_similar_clause['sub_section'] else None
-        })
-    return clauses
+1. **Data Collection**:
+   - Gather a dataset of documents, each labeled with its category.
+   - Organize these documents in a directory structure where each folder represents a category, and the documents within that folder belong to that category.
+
+2. **Data Preprocessing**:
+   - Extract text from PDF documents using `pdfplumber`.
+   - Clean the text data by converting it to lowercase, removing punctuation, and tokenizing the text.
+   - This step ensures that the text is in a suitable format for the model to process.
+
+3. **Model Building**:
+   - Build a CNN model using Keras, a high-level neural networks API.
+   - The model consists of an embedding layer, a convolutional layer, a pooling layer, and dense layers for classification.
+   
+4. **Training**:
+   - Train the model on the preprocessed data.
+   - The model learns to associate patterns in the text with the corresponding document categories.
+
+5. **Prediction**:
+   - Use the trained model to predict the category of new documents.
+   - This involves preprocessing the text of the new document, converting it to a suitable format, and passing it through the model to obtain the prediction.
+
+### Clause Prediction Model
+
+#### Introduction
+The Clause Prediction Model identifies the section, clause, and sub-clause under which a selected piece of text falls. This is particularly useful for legal documents, where understanding the structure and context of clauses is important.
+
+#### Algorithm Used
+
+1. **TF-IDF Vectorization**:
+   - **TF-IDF (Term Frequency-Inverse Document Frequency)** is a statistical measure used to evaluate the importance of a word in a document relative to a collection of documents (corpus).
+   - TF-IDF converts text data into numerical vectors, where each word is represented by a weight that indicates its importance in the document.
+
+2. **Cosine Similarity**:
+   - Cosine similarity measures the cosine of the angle between two vectors in a multi-dimensional space.
+   - It is used to determine the similarity between two text vectors, which helps in finding the closest matching clause for the input text.
+
+3. **Model Architecture**:
+   - **Preprocessing**: The text data is cleaned and tokenized to ensure consistency.
+   - **Vectorization**: The cleaned text is converted into TF-IDF vectors.
+   - **Similarity Calculation**: The cosine similarity between the input text vector and the precomputed vectors of predefined clauses is calculated to find the best match.
+
+4. **Training and Prediction**:
+   - The model is trained on a dataset of legal documents organized into sections, clauses, and sub-clauses.
+   - For a given input text, the model finds the most similar clause by comparing the TF-IDF vectors.
+
+#### Steps
+
+1. **Data Collection**:
+   - Collect a dataset of legal documents organized into sections, clauses, and sub-clauses.
+   - Store these documents in a directory structure where each folder represents a section, and the files within that folder represent the clauses.
+
+2. **Data Preprocessing**:
+   - Clean the text data by converting it to lowercase, removing punctuation, and splitting it into tokens.
+   - Ensure that the text is in a suitable format for vectorization.
+
+3. **Vectorization**:
+   - Convert the cleaned text data into TF-IDF vectors using `TfidfVectorizer` from scikit-learn.
+   - This step creates a numerical representation of the text that captures the importance of each word in the document.
+
+4. **Similarity Calculation**:
+   - Calculate cosine similarity between the input text vector and the precomputed vectors of predefined clauses.
+   - This step identifies the closest matching clause for the input text.
+
+5. **Prediction**:
+   - Use the cosine similarity scores to find the section, clause, and sub-clause of the closest matching text.
+   - Return the prediction results in a structured format.
+
+---
+
+By following these theoretical explanations, users can understand the concepts and workings of both the document classification and clause prediction models. They can then implement these models using the provided steps and apply them to their own datasets for various applications, such as legal document analysis, contract management, and more.
