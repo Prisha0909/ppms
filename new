@@ -8,8 +8,10 @@ def simplify_clause(clause):
 
 # Function to compare the meanings of two simplified clauses using a text generation model
 def compare_meanings(clause1, clause2):
-    # This is a simulated output since we can't call the actual GPT-3 model here.
-    return "The first clause emphasizes the Contractor's responsibility for all costs related to installing the equipment. The second clause similarly states that the Contractor will cover all expenses, but uses the term 'setup' instead of 'installation.' Both clauses convey that the Contractor bears financial responsibility, but the wording differs slightly in describing the process."
+    generator = pipeline('text-generation', model='gpt2')
+    prompt = f"Compare the following clauses and explain the differences in their meanings:\n\nClause 1: {clause1}\n\nClause 2: {clause2}\n\nDifferences:"
+    comparison = generator(prompt, max_length=150, num_return_sequences=1)
+    return comparison[0]['generated_text']
 
 # Function to answer questions based on the given clauses
 def answer_question(clause1, clause2, question):
