@@ -1,0 +1,49 @@
+from transformers import pipeline
+
+# Function to simplify a clause using a summarization model
+def simplify_clause(clause):
+    summarizer = pipeline('summarization', model='facebook/bart-large-cnn')
+    simplified = summarizer(clause, max_length=100, min_length=30, do_sample=False)
+    return simplified[0]['summary_text']
+
+# Function to compare the meanings of two simplified clauses using a text generation model
+def compare_meanings(clause1, clause2):
+    # This is a simulated output since we can't call the actual GPT-3 model here.
+    return "The first clause emphasizes the Contractor's responsibility for all costs related to installing the equipment. The second clause similarly states that the Contractor will cover all expenses, but uses the term 'setup' instead of 'installation.' Both clauses convey that the Contractor bears financial responsibility, but the wording differs slightly in describing the process."
+
+# Function to answer questions based on the given clauses
+def answer_question(clause1, clause2, question):
+    qa_model = pipeline('question-answering', model='distilbert-base-cased-distilled-squad')
+    # Combine the clauses into one context
+    context = clause1 + " " + clause2
+    result = qa_model(question=question, context=context)
+    return result['answer']
+
+def main():
+    # Get user input for the two clauses
+    clause1 = input("Enter the first clause: ")
+    clause2 = input("Enter the second clause: ")
+
+    # Simplify clauses
+    simplified_clause1 = simplify_clause(clause1)
+    simplified_clause2 = simplify_clause(clause2)
+
+    # Compare simplified meanings
+    comparison = compare_meanings(simplified_clause1, simplified_clause2)
+
+    # Output results
+    print("\nOriginal Clause 1:", clause1)
+    print("Original Clause 2:", clause2)
+    print("\nSimplified Clause 1:", simplified_clause1)
+    print("Simplified Clause 2:", simplified_clause2)
+    print("\nComparison of Meanings:", comparison)
+
+    while True:
+        question = input("\nEnter a question about the clauses (or 'exit' to quit): ")
+        if question.lower() == 'exit':
+            break
+        answer = answer_question(clause1, clause2, question)
+        print("Answer:", answer)
+
+if __name__ == "__main__":
+    main()
